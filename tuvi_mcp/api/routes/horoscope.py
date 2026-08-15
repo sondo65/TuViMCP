@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 
 from tuvi_mcp import Horoscope
 from tuvi_mcp._input import coerce_timezone, validate_birth_parameters
-from tuvi_mcp.api.chart_images import resolve_chart_path
+from tuvi_mcp.api.chart_images import resolve_chart_path, save_chart_png
 from tuvi_mcp.api.errors import raise_from_engine_error, raise_from_value_error, raise_http_error
 from tuvi_mcp.api.schemas import HoroscopeGenerateRequest
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/v1/horoscope", tags=["horoscope"])
 
 @router.post("/generate")
 def post_generate(body: HoroscopeGenerateRequest) -> dict:
-    """Generate a birth chart as raw JSON (thien_ban, dia_ban, cach_cuc)."""
+    """Generate a birth chart and return image_url + name."""
     tz, tz_error = coerce_timezone(body.timezone, default=7.0)
     if tz_error is not None:
         raise_from_engine_error(tz_error)
@@ -35,7 +35,7 @@ def post_generate(body: HoroscopeGenerateRequest) -> dict:
         raise_from_engine_error(validation_error)
 
     try:
-        chart = Horoscope.from_birth(
+        horoscope = Horoscope.from_birth(
             name=body.name or "Khách",
             year=body.year,
             month=body.month,
@@ -44,16 +44,37 @@ def post_generate(body: HoroscopeGenerateRequest) -> dict:
             gender=body.gender_val,
             calendar="solar" if body.is_solar else "lunar",
             timezone=tz,
-        ).chart().to_dict()
+        )
+        chart = horoscope.chart()
+        
+        # Render chart as PNG
+        temp_png_path = horoscope.render_chart(chart)
+        
+        # Save PNG to charts directory and get UUID
+        chart_id = save_chart_png(temp_png_path)
+        
+        # Return relative image URL and name
+        image_url = f"/v1/horoscope/images/{chart_id}.png"
+        
+        return {
+            "image_url": image_url,
+            "name": body.name or "Khách"
+        }
     except ValueError as exc:
         raise_from_value_error(exc)
     except Exception as exc:  # pragma: no cover - defensive engine guard
+        # Check if this is a render error specifically
+        if "render" in str(exc).lower():
+            raise_http_error(
+                status_code=500,
+                code="CHART_RENDER_ERROR",
+                detail=str(exc),
+            )
         raise_http_error(
             status_code=500,
             code="HOROSCOPE_ENGINE_ERROR",
             detail=str(exc),
         )
-    return chart
 
 
 @router.get("/images/{chart_id}.png")
