@@ -1,86 +1,15 @@
-{
-  "ui": {
-    "LÁ SỐ TỬ VI": "紫微斗数命盘",
-    "Khách": "客人",
-    "month_pattern": "第{n}月",
-    " · THÂN": " · 身",
-    "Tuần": "旬",
-    "Triệt": "截",
-    "N/A": "无",
-    "Dương lịch": "阳历",
-    "Âm lịch": "阴历",
-    "Giờ sinh": "生时",
-    "Năm sinh": "生年",
-    "Âm dương": "阴阳",
-    "Bản mệnh": "本命",
-    "Hành cục": "行局",
-    "Chủ mệnh": "命主",
-    "Chủ thân": "身主",
-    "Năm xem": "推运年"
-  },
-  "can": {
-    "Giáp": "甲",
-    "Ất": "乙",
-    "Bính": "丙",
-    "Đinh": "丁",
-    "Mậu": "戊",
-    "Kỷ": "己",
-    "Canh": "庚",
-    "Tân": "辛",
-    "Nhâm": "壬",
-    "Quý": "癸"
-  },
-  "chi": {
-    "Tý": "子",
-    "Sửu": "丑",
-    "Dần": "寅",
-    "Mão": "卯",
-    "Thìn": "辰",
-    "Tỵ": "巳",
-    "Ngọ": "午",
-    "Mùi": "未",
-    "Thân": "申",
-    "Dậu": "酉",
-    "Tuất": "戌",
-    "Hợi": "亥",
-    "Tí": "子",
-    "Mẹo": "卯",
-    "Tị": "巳"
-  },
-  "can_abbr": {
-    "Giáp": "甲.",
-    "Ất": "乙.",
-    "Bính": "丙.",
-    "Đinh": "丁.",
-    "Mậu": "戊.",
-    "Kỷ": "己.",
-    "Canh": "庚.",
-    "Tân": "辛.",
-    "Nhâm": "壬.",
-    "Quý": "癸."
-  },
-  "palaces": {
-    "Mệnh": "命",
-    "Phụ mẫu": "父母",
-    "Phúc đức": "福德",
-    "Điền trạch": "田宅",
-    "Quan lộc": "官禄",
-    "Nô bộc": "奴仆",
-    "Thiên di": "迁移",
-    "Tật ách": "疾厄",
-    "Tài bạch": "财帛",
-    "Tử tức": "子女",
-    "Phu thê": "夫妻",
-    "Huynh đệ": "兄弟"
-  },
-  "elements": {
-    "Kim": "金",
-    "Mộc": "木",
-    "Thủy": "水",
-    "Hỏa": "火",
-    "Thổ": "土"
-  },
-  "stars": {
+#!/usr/bin/env python3
+"""Fill remaining zh.json identity stubs with Simplified Chinese Zi Wei terms."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PATH = ROOT / "tuvi_mcp" / "i18n" / "zh.json"
+
+STAR_UPDATES = {
     "Tử vi": "紫微",
     "Liêm trinh": "廉贞",
     "Thiên đồng": "天同",
@@ -236,26 +165,44 @@
     "L.Đà La": "流陀罗",
     "L.Thiên Mã": "流天马",
     "L.Thiên Khốc": "流天哭",
-    "L.Thiên Hư": "流天虚"
-  },
-  "brightness_abbrev": {
-    "Miếu địa": "庙",
-    "Vượng địa": "旺",
-    "Đắc địa": "得",
-    "Bình hòa": "平",
-    "Hãm địa": "陷",
-    "M": "M",
-    "V": "V",
-    "Đ": "Đ",
-    "B": "B",
-    "H": "H"
-  },
-  "gender": {
-    "Nam": "男",
-    "Nữ": "女"
-  },
-  "am_duong": {
-    "Dương": "阳",
-    "Âm": "阴"
-  }
+    "L.Thiên Hư": "流天虚",
 }
+
+
+def main() -> None:
+    data = json.loads(PATH.read_text(encoding="utf-8"))
+    missing = [k for k in STAR_UPDATES if k not in data["stars"]]
+    extra = [k for k in data["stars"] if k not in STAR_UPDATES]
+    if missing or extra:
+        raise SystemExit(f"star key mismatch missing={missing[:10]} extra={extra[:10]}")
+    data["stars"].update(STAR_UPDATES)
+    data["chi"]["Tí"] = "子"
+    data["chi"]["Mẹo"] = "卯"
+    data["chi"]["Tị"] = "巳"
+    data["can_abbr"] = {
+        "Giáp": "甲.",
+        "Ất": "乙.",
+        "Bính": "丙.",
+        "Đinh": "丁.",
+        "Mậu": "戊.",
+        "Kỷ": "己.",
+        "Canh": "庚.",
+        "Tân": "辛.",
+        "Nhâm": "壬.",
+        "Quý": "癸.",
+    }
+    data["brightness_abbrev"]["Miếu địa"] = "庙"
+    data["brightness_abbrev"]["Vượng địa"] = "旺"
+    data["brightness_abbrev"]["Đắc địa"] = "得"
+    data["brightness_abbrev"]["Bình hòa"] = "平"
+    data["brightness_abbrev"]["Hãm địa"] = "陷"
+    data["gender"]["Nam"] = "男"
+    data["gender"]["Nữ"] = "女"
+    data["am_duong"]["Dương"] = "阳"
+    data["am_duong"]["Âm"] = "阴"
+    PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {PATH}")
+
+
+if __name__ == "__main__":
+    main()

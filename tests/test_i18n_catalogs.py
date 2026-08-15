@@ -81,6 +81,9 @@ def test_cjk_translations_not_identity_stubs():
         ("ja", "Phụ mẫu", "palaces"),
         ("ja", "Giáp", "can"),
         ("ja", "Tý", "chi"),
+        ("zh", "Tử vi", "stars"),
+        ("zh", "Dương lịch", "ui"),
+        ("zh", "Nam", "gender"),
     ]
     
     for locale, key, section in test_cases:
