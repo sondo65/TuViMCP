@@ -16,6 +16,7 @@ os.close(db_fd)
 os.environ["TUVI_DB_PATH"] = db_path
 
 from tuvi_mcp.api.app import app  # noqa: E402
+from tuvi_mcp.api.errors import STABLE_CODES  # noqa: E402
 
 client = TestClient(app)
 
@@ -100,8 +101,9 @@ def test_generate_omits_current_year_passes_system_year():
 
     real_render = Horoscope.render_chart
 
-    def spy(self, chart=None, year=None, font_path=None, font_bold_path=None):
+    def spy(self, chart=None, year=None, font_path=None, font_bold_path=None, locale=None, **kwargs):
         captured["year"] = year
+        captured["locale"] = locale
         return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
 
     with patch.object(Horoscope, "render_chart", spy):
@@ -118,8 +120,9 @@ def test_generate_passes_explicit_current_year_to_render():
 
     real_render = Horoscope.render_chart
 
-    def spy(self, chart=None, year=None, font_path=None, font_bold_path=None):
+    def spy(self, chart=None, year=None, font_path=None, font_bold_path=None, locale=None, **kwargs):
         captured["year"] = year
+        captured["locale"] = locale
         return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
 
     payload = {**VALID_PAYLOAD, "current_year": 2027}
@@ -140,8 +143,87 @@ def test_generate_horoscope_request_uses_d01_field_names():
     if "$ref" in schema:
         schema = openapi["components"]["schemas"][schema["$ref"].split("/")[-1]]
     props = schema.get("properties", schema)
-    for field in ("name", "day", "month", "year", "hour_val", "gender_val", "is_solar", "timezone", "current_year"):
+    for field in ("name", "day", "month", "year", "hour_val", "gender_val", "is_solar", "timezone", "current_year", "locale"):
         assert field in props, f"missing D-01 field: {field}"
+
+
+def test_generate_horoscope_omitted_locale_is_vi_compatible():
+    """POST VALID_PAYLOAD with no locale key returns 200; captured locale is vi or None-as-vi."""
+    captured = {}
+    from tuvi_mcp import Horoscope
+
+    real_render = Horoscope.render_chart
+
+    def spy(self, chart=None, year=None, font_path=None, font_bold_path=None, locale=None, **kwargs):
+        captured["locale"] = locale
+        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
+
+    with patch.object(Horoscope, "render_chart", spy):
+        response = client.post("/v1/horoscope/generate", json=VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    assert (captured.get("locale") or "vi") == "vi"
+
+
+def test_generate_horoscope_locale_en_returns_png():
+    """POST locale=en returns 200 and GET image_url is still image/png."""
+    payload = {**VALID_PAYLOAD, "locale": "en"}
+    response = client.post("/v1/horoscope/generate", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["image_url"].endswith(".png")
+    image_response = client.get(data["image_url"])
+    assert image_response.status_code == 200
+    assert image_response.headers["content-type"] == "image/png"
+    assert image_response.content.startswith(b"\x89PNG")
+
+
+def test_generate_horoscope_locale_en_draws_english_title():
+    """POST locale=en records at least one English title draw and none equal LÁ SỐ TỬ VI."""
+    from PIL import ImageDraw
+    from tuvi_mcp.i18n import t
+
+    english_title = t("en", "LÁ SỐ TỬ VI", section="ui")
+    drawn = []
+    real_text = ImageDraw.ImageDraw.text
+
+    def capture(self, xy, text=None, *args, **kwargs):
+        if text is not None:
+            drawn.append(text)
+        return real_text(self, xy, text, *args, **kwargs)
+
+    payload = {**VALID_PAYLOAD, "locale": "en"}
+    with patch.object(ImageDraw.ImageDraw, "text", capture):
+        response = client.post("/v1/horoscope/generate", json=payload)
+
+    assert response.status_code == 200
+    title_draws = [s for s in drawn if s in (english_title, "LÁ SỐ TỬ VI")]
+    assert english_title in drawn
+    assert "LÁ SỐ TỬ VI" not in title_draws
+
+
+def test_generate_horoscope_invalid_locale_fr_returns_stable_error_code():
+    payload = {**VALID_PAYLOAD, "locale": "fr"}
+    response = client.post("/v1/horoscope/generate", json=payload)
+    assert response.status_code == 400
+    body = response.json()
+    assert "error" in body
+    assert "code" in body["error"]
+    assert body["error"]["code"] == "INVALID_LOCALE"
+
+
+def test_generate_horoscope_invalid_locale_zh_tw_returns_stable_error_code():
+    payload = {**VALID_PAYLOAD, "locale": "zh-TW"}
+    response = client.post("/v1/horoscope/generate", json=payload)
+    assert response.status_code == 400
+    body = response.json()
+    assert "error" in body
+    assert "code" in body["error"]
+    assert body["error"]["code"] == "INVALID_LOCALE"
+
+
+def test_invalid_locale_is_stable_code():
+    assert "INVALID_LOCALE" in STABLE_CODES
 
 
 def pytest_sessionfinish(session, exitstatus):
