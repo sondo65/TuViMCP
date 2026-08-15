@@ -266,7 +266,7 @@ def test_triet_anchor_ngo_mui():
 
 
 def test_tuan_anchor_than_dau():
-    """Ất Hợi / Giáp Tuất tuần: Tuần sits on inner top-right gold (Thân–Dậu), not Ngọ–Mùi."""
+    """Ất Hợi / Giáp Tuất tuần: Tuần sits at the midpoint of Thân–Dậu, not the inner-gold ranh giới."""
     from tuvi_mcp._rendering import STYLE, _px, _resolve_style, _tuan_triet_anchor
 
     s = _resolve_style(STYLE)
@@ -274,8 +274,9 @@ def test_tuan_anchor_than_dau():
     bw, bh = _px(76), _px(28)
     x, y, edge = _tuan_triet_anchor(9, 10, ox, oy, bw, bh, s)
     cx1, cy0 = ox + 3 * s.cell, oy + s.cell
+    mid_x = cx1 + s.cell // 2
     assert edge == "right"
-    assert abs(x - cx1) <= bw // 2
+    assert abs(x - mid_x) <= _px(4)
     assert abs(y - cy0) <= _px(8)
     ngo_mui_x = ox + 2 * s.cell
     assert abs(x - ngo_mui_x) > s.cell // 3
@@ -333,7 +334,7 @@ def test_cung_badge_insets_lift_text_off_inner_gold():
     ty = _cung_badge_insets(1, rects, ox, oy, s, pad_v=pad_v)
     assert tuat["bottom"] >= pad_v
     assert hoi["top"] >= pad_v
-    assert ty["top"] >= pad_v
+    assert ty["top"] == 0
 
     thin = _cung_badge_insets(5, rects, ox, oy, s, pad_v=pad_v)
     assert thin == {"top": 0, "bottom": 0, "left": 0, "right": 0}

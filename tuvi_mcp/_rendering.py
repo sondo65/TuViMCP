@@ -654,12 +654,11 @@ def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE):
 def _tuan_triet_anchor(
     c1_id: int, c2_id: int, ox: int, oy: int, badge_w: int, badge_h: int, style: LasoStyle
 ) -> tuple[int, int, str]:
-    """Park badges on the inner gold of thiên bàn at the T-junction of the shared palace seam."""
+    """Park badges on the shared palace seam, at the midpoint between the pair — not the inner-gold T-junction."""
     col1, row1 = CUNG_COORDS[c1_id]
     col2, row2 = CUNG_COORDS[c2_id]
     cell = style.cell
-    cx0, cy0 = ox + cell, oy + cell
-    cx1, cy1 = ox + 3 * cell, oy + 3 * cell
+    cy0, cy1 = oy + cell, oy + 3 * cell
 
     if row1 == row2:
         bx = ox + max(col1, col2) * cell
@@ -667,10 +666,10 @@ def _tuan_triet_anchor(
             return int(bx), int(cy0), "top"
         return int(bx), int(cy1), "center-bottom"
     if col1 == col2:
+        # Midpoint of the two stacked palaces, not the ranh giới with thiên bàn.
         by = oy + max(row1, row2) * cell
-        if col1 == 0:
-            return int(cx0), int(by), "left"
-        return int(cx1), int(by), "right"
+        bx = ox + col1 * cell + cell // 2
+        return int(bx), int(by), "left" if col1 == 0 else "right"
     return ox, oy, "none"
 
 
