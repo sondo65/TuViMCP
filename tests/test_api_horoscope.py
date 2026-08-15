@@ -35,16 +35,30 @@ def test_health_returns_ok():
     assert response.json() == {"status": "ok"}
 
 
-def test_generate_horoscope_valid_payload_shape():
+def test_generate_horoscope_valid_payload_returns_image_url_and_name():
     response = client.post("/v1/horoscope/generate", json=VALID_PAYLOAD)
     assert response.status_code == 200
     data = response.json()
-    assert "thien_ban" in data
-    assert "dia_ban" in data
-    assert "cach_cuc" in data
-    assert isinstance(data["dia_ban"], list)
-    assert len(data["dia_ban"]) == 12
-    assert data["thien_ban"]["ten"] == "Nguyễn Văn A"
+    
+    # Verify response shape
+    assert "image_url" in data
+    assert "name" in data
+    assert data["name"] == "Nguyễn Văn A"
+    
+    # Verify image_url is relative path
+    assert data["image_url"].startswith("/v1/horoscope/images/")
+    assert data["image_url"].endswith(".png")
+    assert not data["image_url"].startswith("http://127.0.0.1")
+    
+    # Test that GET image endpoint works
+    image_response = client.get(data["image_url"])
+    assert image_response.status_code == 200
+    assert image_response.headers["content-type"] == "image/png"
+    
+    # Verify PNG content (magic bytes)
+    content = image_response.content
+    assert len(content) > 1000  # Reasonable size check
+    assert content.startswith(b'\x89PNG')  # PNG magic bytes
 
 
 def test_generate_horoscope_invalid_date_returns_stable_error_code():
@@ -56,6 +70,25 @@ def test_generate_horoscope_invalid_date_returns_stable_error_code():
     assert "code" in body["error"]
     assert body["error"]["code"] == "INVALID_BIRTH_DATE"
     assert body["error"]["code"] != "INVALID_INPUT_PARAMETER"
+
+
+def test_get_chart_image_unknown_id_returns_404_with_error_code():
+    """GET unknown chart ID returns 404 with CHART_IMAGE_NOT_FOUND error code."""
+    response = client.get("/v1/horoscope/images/unknown-id.png")
+    assert response.status_code == 404
+    body = response.json()
+    assert "detail" in body
+    assert "error" in body["detail"]
+    assert "code" in body["detail"]["error"]
+    assert body["detail"]["error"]["code"] == "CHART_IMAGE_NOT_FOUND"
+
+
+def test_get_chart_image_invalid_uuid_blocked():
+    """GET with invalid UUID format is blocked."""
+    response = client.get("/v1/horoscope/images/invalid-uuid-format.png")
+    assert response.status_code == 404
+    body = response.json()
+    assert body["detail"]["error"]["code"] == "CHART_IMAGE_NOT_FOUND"
 
 
 def test_generate_horoscope_request_uses_d01_field_names():
