@@ -78,6 +78,58 @@ def test_corrupted_font_file_fallback(tmp_path):
     assert font is not None
 
 
+def test_locale_font_mapping():
+    """Verify get_font maps locales to correct CJK font files."""
+    # Test Chinese (Simplified) font
+    font_zh = get_font(size=16, locale="zh")
+    assert font_zh is not None
+    assert isinstance(font_zh, ImageFont.FreeTypeFont)
+    assert "NotoSerifSC" in os.path.basename(font_zh.path)
+    
+    # Test Japanese font
+    font_ja = get_font(size=16, locale="ja")
+    assert font_ja is not None
+    assert isinstance(font_ja, ImageFont.FreeTypeFont)
+    assert "NotoSerifJP" in os.path.basename(font_ja.path)
+    
+    # Test Korean font
+    font_ko = get_font(size=16, locale="ko")
+    assert font_ko is not None
+    assert isinstance(font_ko, ImageFont.FreeTypeFont)
+    assert "NotoSerifKR" in os.path.basename(font_ko.path)
+    
+    # Test Vietnamese/English/Malay use existing Noto Serif
+    for locale in ["vi", "en", "ms"]:
+        font = get_font(size=16, locale=locale)
+        assert font is not None
+        assert isinstance(font, ImageFont.FreeTypeFont)
+        assert "NotoSerif-" in os.path.basename(font.path)
+        assert font.path.endswith(".ttf")
+
+
+def test_cjk_font_character_coverage():
+    """Verify CJK fonts have proper character coverage for their target scripts."""
+    # Test Chinese character coverage (命)
+    font_zh = get_font(size=16, locale="zh")
+    zh_mask = font_zh.getmask("命")
+    assert zh_mask.size[0] > 0 and zh_mask.size[1] > 0
+    
+    # Test Korean Hangul coverage (명)
+    font_ko = get_font(size=16, locale="ko") 
+    ko_mask = font_ko.getmask("명")
+    assert ko_mask.size[0] > 0 and ko_mask.size[1] > 0
+    
+    # Test Japanese character coverage (宮)
+    font_ja = get_font(size=16, locale="ja")
+    ja_mask = font_ja.getmask("宮")
+    assert ja_mask.size[0] > 0 and ja_mask.size[1] > 0
+    
+    # Verify Vietnamese still works (ệ)
+    font_vi = get_font(size=16, locale="vi")
+    vi_mask = font_vi.getmask("ệ")
+    assert vi_mask.size[0] > 0 and vi_mask.size[1] > 0
+
+
 def test_invalid_type_font_path():
     """Verify passing non-string invalid types (int, dict, list) to font_path is handled safely."""
     font1 = get_font(size=12, font_path=12345)

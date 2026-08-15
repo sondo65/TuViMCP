@@ -64,7 +64,7 @@ include = ["tuvi_mcp*"]
 # the Python package so wheel installs carry them.
 [tool.setuptools.package-data]
 "tuvi_mcp._data" = ["*.json"]
-"tuvi_mcp._fonts" = ["*.ttf", "OFL.txt"]
+"tuvi_mcp._fonts" = ["*.ttf", "*.otf", "OFL.txt"]
 "tuvi_mcp._assets" = ["laso/*.png", "laso/*.md"]
 "tuvi_mcp.i18n" = ["*.json"]
 

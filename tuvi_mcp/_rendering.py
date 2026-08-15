@@ -536,7 +536,15 @@ def get_font(size=12, bold=False, font_path=None, locale="vi"):
         except Exception:
             pass
 
-    font_filename = "NotoSerif-Bold.ttf" if bold else "NotoSerif-Regular.ttf"
+    # Map locales to font files (CJK vs Latin/Vietnamese)
+    if locale in {"zh"}:
+        font_filename = "NotoSerifSC-Bold.otf" if bold else "NotoSerifSC-Regular.otf"
+    elif locale in {"ja"}:
+        font_filename = "NotoSerifJP-Bold.otf" if bold else "NotoSerifJP-Regular.otf"
+    elif locale in {"ko"}:
+        font_filename = "NotoSerifKR-Bold.otf" if bold else "NotoSerifKR-Regular.otf"
+    else:  # vi, en, ms and fallback
+        font_filename = "NotoSerif-Bold.ttf" if bold else "NotoSerif-Regular.ttf"
     bundled_path = None
     try:
         from importlib.resources import files
@@ -664,7 +672,7 @@ def _legend_box(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int, lo
     return box_x0, box_y0, box_x1, box_y1
 
 
-def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE):
+def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE, locale="vi"):
     x0, y0, x1, y1 = cx - w // 2, cy - h // 2, cx + w // 2, cy + h // 2
     draw.rounded_rectangle(
         [x0, y0, x1, y1],
@@ -674,7 +682,7 @@ def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE):
         width=max(1, _px(1)),
     )
     if font is None:
-        font = get_font(size=_px(9), bold=True)
+        font = get_font(size=_px(9), bold=True, locale=locale)
     tw = draw.textlength(text, font=font)
     th = _px(10)
     try:
@@ -786,7 +794,7 @@ def draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=None, style: LasoStyle = ST
                     cy += badge_h + _px(6)
             cx = max(badge_w // 2 + 1, min(cw - badge_w // 2 - 1, cx))
             cy = max(badge_h // 2 + 1, min(ch - badge_h // 2 - 1, cy))
-            draw_badge(draw, cx, cy, lab, badge_w, badge_h, font=font, style=style)
+            draw_badge(draw, cx, cy, lab, badge_w, badge_h, font=font, style=style, locale=locale)
 
 
 def draw_lines_behind_center(draw, m_cung, t_cung, ox, oy, style: LasoStyle = STYLE):
