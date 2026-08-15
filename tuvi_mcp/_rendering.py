@@ -69,6 +69,8 @@ CUNG_COORDS = {
     12: (3, 3),
 }
 
+TUAN_TRIET_PAIRS = ((1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12))
+
 # Fixed chi by cung_so (Địa bàn earth-branch positions)
 CUNG_CHI = {
     1: "Tý",
@@ -144,6 +146,48 @@ TRANG_SINH_SET = {
 def _px(n: float, scale: int | None = None) -> int:
     sc = STYLE.scale if scale is None else scale
     return int(round(n * sc))
+
+
+def _font_ink_bottom(font, sample: str) -> int:
+    try:
+        return int(font.getbbox(sample)[3])
+    except Exception:
+        return _px(20)
+
+
+def _palace_title_to_star_offset(font, palace: str) -> int:
+    """Y offset from title_y to the first chính-tinh so Noto Serif diacritics don't collide."""
+    ink = _font_ink_bottom(font, palace or "MỆNH")
+    return ink + _px(6)
+
+
+def _palace_stack_spacing(
+    n_chinh: int,
+    n_aux: int,
+    usable: float,
+    star_target: int,
+    aux_target: int,
+    gap_min: int,
+    floor: int | None = None,
+    extra_cap: int | None = None,
+) -> tuple[float, float, float]:
+    """Line heights for palace stars. Use leftover cell height instead of packing to _px(20)."""
+    floor = _px(20) if floor is None else floor
+    extra_cap = _px(10) if extra_cap is None else extra_cap
+    n_chinh = max(0, int(n_chinh))
+    n_aux = max(0, int(n_aux))
+    gap = float(gap_min if n_chinh and n_aux else 0)
+    slots = n_chinh + n_aux
+    floors = n_chinh * floor + n_aux * floor + gap
+    if slots == 0 or usable < floors:
+        return float(floor), float(floor), gap
+    target_need = n_chinh * star_target + n_aux * aux_target + gap
+    if usable >= target_need:
+        extra = min(usable - target_need, extra_cap * slots)
+        bump = extra / slots
+        return star_target + bump, aux_target + bump, gap
+    bump = (usable - floors) / slots
+    return floor + bump, floor + bump, gap
 
 
 def _resolve_style(style: LasoStyle = STYLE) -> LasoStyle:
@@ -460,7 +504,7 @@ def get_font(size=12, bold=False, font_path=None):
         except Exception:
             pass
 
-    font_filename = "Roboto-Bold.ttf" if bold else "Roboto-Regular.ttf"
+    font_filename = "NotoSerif-Bold.ttf" if bold else "NotoSerif-Regular.ttf"
     bundled_path = None
     try:
         from importlib.resources import files
@@ -543,13 +587,47 @@ def dich_cung(cung_start, offset):
     return val % 12
 
 
+LEGEND_STATUSES = (("M", "Miếu"), ("V", "Vượng"), ("Đ", "Đắc"), ("B", "Bình"), ("H", "Hãm"))
+
+
 def _legend_colon(draw, x, mid_y, color="#E0C35A", scale: int | None = None):
-    """Two dots, taller than Roboto's punctuation so M : Miếu stays readable."""
+    """Two dots, taller than Noto Serif punctuation so M : Miếu stays readable."""
     sc = STYLE.scale if scale is None else scale
     r, gap = 1.4 * sc, 3.2 * sc
     for dy in (-gap, gap):
         draw.ellipse([x, mid_y + dy - r, x + 2 * r, mid_y + dy + r], fill=color)
     return x + _px(6, sc)
+
+
+def _legend_status_items(draw, font, start_x=0.0):
+    """(abbrev, full, x, item_w) for M/V/Đ/B/H — same metrics as the footer paint loop."""
+    sx = float(start_x)
+    items = []
+    for ab, full in LEGEND_STATUSES:
+        ab_w = draw.textlength(ab, font=font)
+        colon_x = sx + ab_w + _px(3) + _px(6)
+        item_w = colon_x + _px(3) - sx + draw.textlength(full, font=font)
+        items.append((ab, full, sx, item_w))
+        sx += item_w + (_px(18) if ab == "V" else _px(14))
+    return items
+
+
+def _legend_status_content_width(draw, font) -> float:
+    items = _legend_status_items(draw, font)
+    _ab, _full, sx, item_w = items[-1]
+    return sx + item_w - items[0][2]
+
+
+def _legend_box(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int):
+    """Gold legend rect sized so Hãm keeps inner padding; never overlap the Hợi chi tile."""
+    content_w = _legend_status_content_width(draw, font)
+    pad = _px(10)
+    box_x1 = ox + grid - _px(8)
+    box_x0 = int(round(box_x1 - pad * 2 - content_w))
+    chi_right = ox + _px(8) + 11 * chi_stride + _px(62)
+    box_x0 = max(box_x0, chi_right + _px(8))
+    box_y0, box_y1 = fy0 + _px(8), fy0 + style.footer - _px(8)
+    return box_x0, box_y0, box_x1, box_y1
 
 
 def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE):
@@ -576,45 +654,86 @@ def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE):
 def _tuan_triet_anchor(
     c1_id: int, c2_id: int, ox: int, oy: int, badge_w: int, badge_h: int, style: LasoStyle
 ) -> tuple[int, int, str]:
-    """Park badges on the outer pad or fully inside thiên bàn — never on palace footers."""
+    """Park badges on the inner gold of thiên bàn at the T-junction of the shared palace seam."""
     col1, row1 = CUNG_COORDS[c1_id]
     col2, row2 = CUNG_COORDS[c2_id]
-    cx0, cy0 = ox + style.cell, oy + style.cell
-    cx1, cy1 = ox + 3 * style.cell, oy + 3 * style.cell
-    mx = badge_w // 2 + _px(14)
-    my = badge_h // 2 + _px(6)
-
-    def clamp_in_center(x: float, y: float) -> tuple[int, int]:
-        x = min(max(x, cx0 + mx), cx1 - mx)
-        y = min(max(y, cy0 + my), cy1 - my)
-        return int(x), int(y)
+    cell = style.cell
+    cx0, cy0 = ox + cell, oy + cell
+    cx1, cy1 = ox + 3 * cell, oy + 3 * cell
 
     if row1 == row2:
-        bx = ox + max(col1, col2) * style.cell
+        bx = ox + max(col1, col2) * cell
         if row1 == 0:
-            return bx, max(badge_h // 2 + _px(2), oy - badge_h // 2 - _px(4)), "top"
-        x, y = clamp_in_center(bx, cy1 - my)
-        return x, y, "center-bottom"
+            return int(bx), int(cy0), "top"
+        return int(bx), int(cy1), "center-bottom"
     if col1 == col2:
-        seam_y = oy + max(row1, row2) * style.cell
+        by = oy + max(row1, row2) * cell
         if col1 == 0:
-            x, y = clamp_in_center(cx0 + mx, seam_y)
-            return x, y, "left"
-        # Right-hand palaces: inside thiên bàn, left of the seal — not on cung footers
-        x = cx1 - _px(90) - badge_w // 2 - _px(12)
-        x, y = clamp_in_center(x, seam_y)
-        return x, y, "right"
+            return int(cx0), int(by), "left"
+        return int(cx1), int(by), "right"
     return ox, oy, "none"
 
 
+def _tuan_triet_seams(dia_ban) -> list[tuple[int, int]]:
+    by_id = {c["cung_so"]: c for c in dia_ban}
+    seams = []
+    for a, b in TUAN_TRIET_PAIRS:
+        c1, c2 = by_id.get(a), by_id.get(b)
+        if not c1 or not c2:
+            continue
+        tuan = c1.get("tuan_trung") and c2.get("tuan_trung")
+        triet = c1.get("triet_lo") and c2.get("triet_lo")
+        if tuan or triet:
+            seams.append((a, b))
+    return seams
+
+
+def _tuan_triet_badge_rects(
+    dia_ban, ox: int, oy: int, badge_w: int, badge_h: int, style: LasoStyle
+) -> list[tuple[float, float, float, float]]:
+    rects = []
+    hw, hh = badge_w / 2, badge_h / 2
+    for a, b in _tuan_triet_seams(dia_ban):
+        bx, by, _ = _tuan_triet_anchor(a, b, ox, oy, badge_w, badge_h, style)
+        rects.append((bx - hw, by - hh, bx + hw, by + hh))
+    return rects
+
+
+def _cung_badge_insets(
+    cung_so: int,
+    rects,
+    ox: int,
+    oy: int,
+    style: LasoStyle,
+    pad_v: int | None = None,
+) -> dict[str, int]:
+    """Lift footer / drop header only on the palace edge the badge overlaps."""
+    pad_v = _px(28) // 2 + _px(8) if pad_v is None else pad_v
+    col, row = CUNG_COORDS[cung_so]
+    cell = style.cell
+    x0 = ox + col * cell
+    y0 = oy + row * cell
+    x1 = x0 + cell
+    y1 = y0 + cell
+    insets = {"top": 0, "bottom": 0, "left": 0, "right": 0}
+    band = pad_v + _px(4)
+    for bl, bt, br, bb in rects:
+        if br <= x0 or bl >= x1 or bb <= y0 or bt >= y1:
+            continue
+        if bb > y0 and bt < y0 + band:
+            insets["top"] = max(insets["top"], pad_v)
+        if bt < y1 and bb > y1 - band:
+            insets["bottom"] = max(insets["bottom"], pad_v)
+    return insets
+
+
 def draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=None, style: LasoStyle = STYLE):
-    pairs = [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]
     font = get_font(_px(16), True)
     badge_w, badge_h = _px(76), _px(28)
     cw, ch = _canvas_size(style)
-    for c1_id, c2_id in pairs:
-        c1 = next((c for c in dia_ban if c["cung_so"] == c1_id), None)
-        c2 = next((c for c in dia_ban if c["cung_so"] == c2_id), None)
+    by_id = {c["cung_so"]: c for c in dia_ban}
+    for c1_id, c2_id in TUAN_TRIET_PAIRS:
+        c1, c2 = by_id.get(c1_id), by_id.get(c2_id)
         if not c1 or not c2:
             continue
         labels = []
@@ -758,6 +877,9 @@ def generate_laso_image(
     font_palace = get_font(_px(22), True, bold_path)
     font_star = get_font(_px(18), True, bold_path)
     font_chi = get_font(_px(17), True, bold_path)
+    badge_w, badge_h = _px(76), _px(28)
+    badge_rects = _tuan_triet_badge_rects(dia_ban, ox, oy, badge_w, badge_h, style)
+    badge_pad_v = badge_h // 2 + _px(8)
 
     # --- Palaces ---
     for cung in dia_ban:
@@ -767,6 +889,8 @@ def generate_laso_image(
         y0 = oy + row * style.cell
         x1 = x0 + style.cell
         y1 = y0 + style.cell
+        ins = _cung_badge_insets(c_id, badge_rects, ox, oy, style, pad_v=badge_pad_v)
+        top_pad, bot_pad = ins["top"], ins["bottom"]
 
         can_chi = cung.get("cung_ten", "")
         chi_name = CUNG_CHI.get(c_id, "")
@@ -784,20 +908,21 @@ def generate_laso_image(
         # Header: index/chi first, circular medallion below, palace title last
         # (never overlay the red title — especially tight in the four corner cung)
         is_corner = (col in (0, 3) and row in (0, 3))
-        icon_sz = _px(50) if is_corner else _px(60)
+        icon_sz = _px(42) if is_corner else _px(48)
         idx_x = x0 + (_px(18) if is_corner and col == 0 else _px(6))
         chi_pad = _px(20) if is_corner and col == 3 else _px(8)
-        draw.text((idx_x, y0 + _px(4)), str(c_id), fill=style.ink_muted, font=font_sm)
+        hy0 = y0 + _px(4) + top_pad
+        draw.text((idx_x, hy0), str(c_id), fill=style.ink_muted, font=font_sm)
         chi_label = f"{can_abbr}{chi_name}".upper()
         twc = draw.textlength(chi_label, font=font_chi)
-        draw.text((x1 - chi_pad - twc, y0 + _px(4)), chi_label, fill=style.ink, font=font_chi)
+        draw.text((x1 - chi_pad - twc, hy0), chi_label, fill=style.ink, font=font_chi)
         if dai_str:
             tw = draw.textlength(dai_str, font=font_bold)
-            draw.text((x1 - chi_pad - tw, y0 + _px(22)), dai_str, fill=style.ink_muted, font=font_bold)
+            draw.text((x1 - chi_pad - tw, hy0 + _px(18)), dai_str, fill=style.ink_muted, font=font_bold)
 
         icon = _chi_icon(c_id, can_chi, size=icon_sz)
         icon_x = x0 + (style.cell - icon_sz) // 2
-        icon_y = y0 + _px(20)
+        icon_y = y0 + _px(10) + top_pad
         if is_corner:
             # Nudge toward the chart center, away from outer filigree / labels
             if col == 0:
@@ -813,7 +938,7 @@ def generate_laso_image(
         if cung.get("cung_than"):
             palace += " · THÂN"
         twp = draw.textlength(palace, font=font_palace)
-        title_y = icon_y + icon_sz + (_px(14) if is_corner else _px(12))
+        title_y = icon_y + icon_sz + (_px(10) if is_corner else _px(8))
         draw.text((x0 + style.cell / 2 - twp / 2, title_y), palace, fill=style.seal_red, font=font_palace)
 
         chinh, cat, sat = [], [], []
@@ -837,38 +962,47 @@ def generate_laso_image(
             else:
                 sat.append((f"{name}{suffix}", color))
 
-        # Stack: title → chính tinh → two auxiliary columns (never overlap title)
-        line_h = _px(20)
-        cy = title_y + _px(28)
+        # Stack: title → chính tinh → two auxiliary columns (serif needs real leading)
+        n_chinh = min(2, len(chinh))
+        n_aux = max(len(cat), len(sat))
+        footer_y = y1 - _px(22) - bot_pad
+        footer_limit = footer_y - _px(4)
+        cy = title_y + _palace_title_to_star_offset(font_palace, palace)
+        star_target = _font_ink_bottom(font_star, "THIÊN TƯỚNG (H)") + _px(6)
+        aux_target = _font_ink_bottom(font_bold, "Kình dương") + _px(6)
+        usable = footer_limit - cy
+        star_lh, aux_lh, group_gap = _palace_stack_spacing(
+            n_chinh, n_aux, usable, star_target, aux_target, gap_min=_px(8)
+        )
         for nm, colr in chinh[:2]:
             tw = draw.textlength(nm, font=font_star)
             draw.text((x0 + style.cell / 2 - tw / 2, cy), nm, fill=colr, font=font_star)
-            cy += line_h
+            cy += star_lh
 
-        aux_top = cy + _px(4)
-        footer_limit = y1 - _px(26)
+        aux_top = cy + group_gap
         y_left = aux_top
         for nm, colr in cat:
-            if y_left + line_h > footer_limit:
+            if y_left + aux_lh > footer_limit:
                 break
             draw.text((x0 + _px(8), y_left), nm, fill=colr, font=font_bold)
-            y_left += line_h
+            y_left += aux_lh
 
         y_right = aux_top
+        sat_x = x0 + style.cell // 2 + _px(6)
         for nm, colr in sat:
-            if y_right + line_h > footer_limit:
+            if y_right + aux_lh > footer_limit:
                 break
-            draw.text((x0 + style.cell // 2 + _px(6), y_right), nm, fill=colr, font=font_bold)
-            y_right += line_h
+            draw.text((sat_x, y_right), nm, fill=colr, font=font_bold)
+            y_right += aux_lh
 
-        # Footer of cell
-        draw.text((x0 + _px(8), y1 - _px(22)), f"Tháng {month_idx}", fill=style.ink_muted, font=font_sm)
+        thang = f"Tháng {month_idx}"
+        draw.text((x0 + _px(8), footer_y), thang, fill=style.ink_muted, font=font_sm)
         if trang:
             tw = draw.textlength(trang, font=font_reg)
-            draw.text((x0 + style.cell / 2 - tw / 2, y1 - _px(22)), trang, fill=style.ink, font=font_reg)
+            draw.text((x0 + style.cell / 2 - tw / 2, footer_y), trang, fill=style.ink, font=font_reg)
         if hanh:
             tw = draw.textlength(hanh, font=font_sm)
-            draw.text((x1 - _px(12) - tw, y1 - _px(22)), hanh, fill=style.ink_muted, font=font_sm)
+            draw.text((x1 - _px(12) - tw, footer_y), hanh, fill=style.ink_muted, font=font_sm)
 
     draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=font_bold, style=style)
 
@@ -991,12 +1125,10 @@ def generate_laso_image(
         tw = draw.textlength(chi.upper(), font=font_ft)
         draw.text((ix + _px(31) - tw / 2, fy0 + _px(74)), chi.upper(), fill=style.gold_bright, font=font_ft)
 
-    # Legend: ngũ hành colors + Miếu/Vượng/Đắc/Bình/Hãm
-    box_x0 = ox + grid - _px(340)
-    box_y0, box_y1 = fy0 + _px(8), fy0 + style.footer - _px(8)
-    box_x1 = ox + grid - _px(8)
-    draw.rectangle([box_x0, box_y0, box_x1, box_y1], outline=style.gold, width=max(1, _px(1)))
+    # Legend: ngũ hành colors + Miếu/Vượng/Đắc/Bình/Hãm (box grows with Noto Serif)
     font_leg = get_font(_px(13), True, bold_path)
+    box_x0, box_y0, box_x1, box_y1 = _legend_box(draw, font_leg, ox, grid, fy0, style, chi_stride)
+    draw.rectangle([box_x0, box_y0, box_x1, box_y1], outline=style.gold, width=max(1, _px(1)))
     elements = [
         ("Kim", ELEMENT_COLORS["Kim"]),
         ("Mộc", ELEMENT_COLORS["Mộc"]),
@@ -1004,7 +1136,7 @@ def generate_laso_image(
         ("Hỏa", ELEMENT_COLORS["Hỏa"]),
         ("Thổ", ELEMENT_COLORS["Thổ"]),
     ]
-    ex, ey = box_x0 + _px(8), box_y0 + _px(14)
+    ex, ey = box_x0 + _px(10), box_y0 + _px(14)
     cap = draw.textbbox((0, 0), "H", font=font_leg)
     cap_mid = (cap[1] + cap[3]) / 2
     chip = _px(10)
@@ -1019,15 +1151,12 @@ def generate_laso_image(
         )
         draw.text((ex + chip + _px(5), ey), name, fill="#F5E6C8", font=font_leg)
         ex += _px(64)
-    statuses = [("M", "Miếu"), ("V", "Vượng"), ("Đ", "Đắc"), ("B", "Bình"), ("H", "Hãm")]
-    sx, sy = box_x0 + _px(8), box_y0 + _px(50)
-    for ab, full in statuses:
+    sy = box_y0 + _px(50)
+    for ab, full, sx, _item_w in _legend_status_items(draw, font_leg, box_x0 + _px(10)):
         draw.text((sx, sy), ab, fill=style.gold_bright, font=font_leg)
         ab_w = draw.textlength(ab, font=font_leg)
         colon_x = _legend_colon(draw, sx + ab_w + _px(3), sy + cap_mid, style.gold_bright)
         draw.text((colon_x + _px(3), sy), full, fill="#F5E6C8", font=font_leg)
-        item_w = colon_x + _px(3) - sx + draw.textlength(full, font=font_leg)
-        sx += item_w + (_px(18) if ab == "V" else _px(14))
 
     safe = str(name_val).replace(" ", "_")
     out = os.path.join(tempfile.gettempdir(), f"tuvi_chart_{safe}.png")

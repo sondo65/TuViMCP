@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Traditional lá số PNG style (default):** `generate_laso_image` now renders a minh-họa-like chart — navy/gold frame, parchment fills, classical ngũ hành colors, per-cung zodiac icons, center bagua/dragons/seal, and a navy footer with 12 chi icons + Âm lịch block. Modern gray/Tailwind palette removed as default.
 - Bundled procedural ornament assets under `tuvi_mcp/_assets/laso/` (corners, chi icons, bagua, dragons, seal). Assets are package-generated decorations, not third-party screenshot crops.
+- **Bundled Unicode font (`Noto Serif`):** Default chart typeface is `NotoSerif-Regular.ttf` / `NotoSerif-Bold.ttf` (SIL OFL) under `tuvi_mcp/_fonts`, replacing Roboto. Full Vietnamese diacritics (`ệ`, `ỉ`, `ử`, `ơ`, `đ`, `ấ`, `ở`) on headless runtimes. Optional `font_path` / `font_bold_path` overrides unchanged.
 
 ## [0.4.1] - 2026-08-03
 

@@ -61,7 +61,7 @@ print(van_han["nhat_han"])
 # Auspicious day evaluation
 auspicious = h.auspicious(day=27, month=7, year=2026)
 
-# Render chart as PNG (uses bundled Roboto Unicode font by default)
+# Render chart as PNG (uses bundled Noto Serif Unicode font by default)
 path = h.render_chart(chart, year=2026)
 
 # Optionally specify custom TTF font files
