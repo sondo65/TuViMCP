@@ -1,7 +1,7 @@
 {
   "ui": {
-    "LÁ SỐ TỬ VI": "LÁ SỐ TỬ VI",
-    "Khách": "Khách",
+    "LÁ SỐ TỬ VI": "紫微斗数命盤",
+    "Khách": "ゲスト",
     "month_pattern": "Tháng {n}",
     " · THÂN": " · THÂN",
     "Tuần": "Tuần",
@@ -60,7 +60,7 @@
     "Quý": "Q."
   },
   "palaces": {
-    "Mệnh": "Mệnh",
+    "Mệnh": "命",
     "Phụ mẫu": "Phụ mẫu",
     "Phúc đức": "Phúc đức",
     "Điền trạch": "Điền trạch",

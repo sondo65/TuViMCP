@@ -599,6 +599,57 @@ def get_font(size=12, bold=False, font_path=None, locale="vi"):
             return None
 
 
+def draw_text_fallback(draw, xy, text, fonts, fill, anchor=None):
+    """
+    Draw text using font fallback for mixed-script support.
+    For each character, use the first font whose cmap can render it (not .notdef).
+    
+    Args:
+        draw: PIL ImageDraw object
+        xy: (x, y) position tuple
+        text: text to draw
+        fonts: list of PIL ImageFont objects in priority order
+        fill: text color
+        anchor: text anchor (optional)
+    """
+    if not text or not fonts:
+        return
+    
+    x, y = xy
+    
+    for char in text:
+        # Find the first font that can render this character
+        font_to_use = None
+        for font in fonts:
+            try:
+                # Check if font can render the character (has non-zero mask)
+                mask = font.getmask(char)
+                if mask.size[0] > 0 and mask.size[1] > 0:
+                    # Additional check: ensure it's not a .notdef glyph by checking width
+                    bbox = font.getbbox(char)
+                    if bbox and bbox[2] > bbox[0]:  # has actual width
+                        font_to_use = font
+                        break
+            except Exception:
+                continue
+        
+        if font_to_use:
+            # Draw this character with the selected font
+            draw.text((x, y), char, fill=fill, font=font_to_use, anchor=anchor)
+            
+            # Advance x position for next character
+            try:
+                char_width = font_to_use.getlength(char)
+                x += char_width
+            except Exception:
+                # Fallback to bbox width if getlength fails
+                try:
+                    bbox = font_to_use.getbbox(char)
+                    x += (bbox[2] - bbox[0]) if bbox else 0
+                except Exception:
+                    x += 12  # Fallback fixed width
+
+
 def _chi_key_for_cung(cung_so: int, cung_ten: str = "") -> str:
     chi = CUNG_CHI.get(cung_so, "")
     if not chi and cung_ten:
@@ -1097,8 +1148,16 @@ def generate_laso_image(
     if dr:
         _paste_rgba(img, _fit_square(dr, dragon_sz, pad=_px(4)), (cx1 - _px(18) - dragon_sz, icon_y))
 
+    # Use font fallback for mixed-script names (e.g. "Nguyễn" on Chinese chart)
+    fallback_fonts = [font_name]  # Locale primary font first
+    if locale in {"zh", "ja", "ko"}:
+        # Add Latin/Vietnamese font as fallback for CJK locales
+        fallback_fonts.append(get_font(_px(28), True, bold_path, locale="vi"))
+    
+    # Calculate width for centering (using primary font as approximation)
     tw = draw.textlength(name_val, font=font_name)
-    draw.text((ox + grid / 2 - tw / 2, name_y), name_val, fill=style.seal_red, font=font_name)
+    draw_text_fallback(draw, (ox + grid / 2 - tw / 2, name_y), name_val, 
+                      fallback_fonts, style.seal_red)
 
     ngay_duong = thien_ban.get("ngay_duong", "")
     ngay_am = thien_ban.get("ngay_am", "")

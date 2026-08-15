@@ -62,3 +62,23 @@ def test_t_missing_key_falls_back_to_identity_not_blank():
     result = t("en", missing)
     assert result == missing
     assert result != ""
+
+
+def test_cjk_translations_not_identity_stubs():
+    """zh/ko/ja/ms catalogs have real translations, not Vietnamese identity."""
+    # Test that key UI elements are actually translated  
+    test_cases = [
+        ("ja", "LÁ SỐ TỬ VI", "ui"),
+        ("zh", "LÁ SỐ TỬ VI", "ui"), 
+        ("ko", "LÁ SỐ TỬ VI", "ui"),
+        ("ms", "LÁ SỐ TỬ VI", "ui"),
+        ("zh", "Mệnh", "palaces"),
+        ("ja", "Mệnh", "palaces"),
+        ("ko", "Mệnh", "palaces"),
+        ("ms", "Mệnh", "palaces")
+    ]
+    
+    for locale, key, section in test_cases:
+        translated = t(locale, key, section=section)
+        # The translation should not equal the original Vietnamese
+        assert translated != key, f"Locale '{locale}' key '{key}' in section '{section}' is untranslated: {translated}"

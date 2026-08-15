@@ -130,6 +130,51 @@ def test_cjk_font_character_coverage():
     assert vi_mask.size[0] > 0 and vi_mask.size[1] > 0
 
 
+def test_six_locale_png_smoke():
+    """Parametrized smoke test: all 6 locales produce valid PNG output."""
+    from tuvi_mcp.horoscope import Horoscope
+    import os
+    
+    test_locales = ["vi", "en", "zh", "ko", "ja", "ms"]
+    
+    for locale in test_locales:
+        # Generate a chart for this locale
+        h = Horoscope.from_birth(
+            name="Test Name", day=15, month=8, year=1995, 
+            hour=10, gender="Nam"
+        )
+        img_path = h.render_chart(year=2026, locale=locale)
+        
+        # Verify PNG is valid
+        assert os.path.exists(img_path), f"PNG not created for locale {locale}"
+        
+        # Check file starts with PNG magic bytes
+        with open(img_path, "rb") as f:
+            magic = f.read(4)
+            assert magic == b'\x89PNG', f"Invalid PNG magic for locale {locale}: {magic}"
+        
+        # Check reasonable file size (>50KB) 
+        size = os.path.getsize(img_path)
+        assert size > 50000, f"PNG too small for locale {locale}: {size} bytes"
+
+
+def test_mixed_script_name_with_chinese_locale():
+    """Mixed Vietnamese name on Chinese chart (font fallback test - D-23)."""
+    from tuvi_mcp.horoscope import Horoscope
+    import os
+    
+    # Vietnamese name with Chinese locale should still render
+    h = Horoscope.from_birth(
+        name="Nguyễn Văn A", day=20, month=5, year=1995,
+        hour=11, gender="Nam" 
+    )
+    img_path = h.render_chart(year=2026, locale="zh")
+    
+    assert os.path.exists(img_path)
+    size = os.path.getsize(img_path)
+    assert size > 50000, f"Mixed name Chinese chart too small: {size} bytes"
+
+
 def test_invalid_type_font_path():
     """Verify passing non-string invalid types (int, dict, list) to font_path is handled safely."""
     font1 = get_font(size=12, font_path=12345)
