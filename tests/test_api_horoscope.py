@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import os
 import tempfile
+from datetime import datetime
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -91,6 +93,43 @@ def test_get_chart_image_invalid_uuid_blocked():
     assert body["detail"]["error"]["code"] == "CHART_IMAGE_NOT_FOUND"
 
 
+def test_generate_omits_current_year_passes_system_year():
+    """POST without current_year still renders Năm xem as the system year."""
+    captured = {}
+    from tuvi_mcp import Horoscope
+
+    real_render = Horoscope.render_chart
+
+    def spy(self, chart=None, year=None, font_path=None, font_bold_path=None):
+        captured["year"] = year
+        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
+
+    with patch.object(Horoscope, "render_chart", spy):
+        response = client.post("/v1/horoscope/generate", json=VALID_PAYLOAD)
+
+    assert response.status_code == 200
+    assert captured["year"] == datetime.now().year
+
+
+def test_generate_passes_explicit_current_year_to_render():
+    """POST current_year is forwarded to render_chart as year."""
+    captured = {}
+    from tuvi_mcp import Horoscope
+
+    real_render = Horoscope.render_chart
+
+    def spy(self, chart=None, year=None, font_path=None, font_bold_path=None):
+        captured["year"] = year
+        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
+
+    payload = {**VALID_PAYLOAD, "current_year": 2027}
+    with patch.object(Horoscope, "render_chart", spy):
+        response = client.post("/v1/horoscope/generate", json=payload)
+
+    assert response.status_code == 200
+    assert captured["year"] == 2027
+
+
 def test_generate_horoscope_request_uses_d01_field_names():
     """OpenAPI body must expose D-01 field names (hour_val, gender_val, is_solar)."""
     openapi = app.openapi()
@@ -101,7 +140,7 @@ def test_generate_horoscope_request_uses_d01_field_names():
     if "$ref" in schema:
         schema = openapi["components"]["schemas"][schema["$ref"].split("/")[-1]]
     props = schema.get("properties", schema)
-    for field in ("name", "day", "month", "year", "hour_val", "gender_val", "is_solar", "timezone"):
+    for field in ("name", "day", "month", "year", "hour_val", "gender_val", "is_solar", "timezone", "current_year"):
         assert field in props, f"missing D-01 field: {field}"
 
 

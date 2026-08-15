@@ -1,41 +1,112 @@
 # -*- coding: utf-8 -*-
 """
 (c) 2026 nmhaaa3218 <manh.ha.3218@gmail.com>
+
+Traditional minh-họa lá số PNG renderer.
+Visual contract aligned with Stitch traditional-laso reference
+(`.stitch/designs/traditional-laso-stitch-reference.png`): navy/gold frame,
+parchment cells, illustrated zodiac icons, center Bagua/dragons/seal,
+footer zodiac strip + Âm lịch.
 """
+from __future__ import annotations
+
 import os
 import tempfile
+from dataclasses import dataclass, replace
+from functools import lru_cache
+from typing import Optional
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
-# Element Colors Mapping (Modern Palette)
+
+@dataclass(frozen=True)
+class LasoStyle:
+    parchment: str = "#FBF5E9"
+    parchment_deep: str = "#F3E4C8"
+    navy: str = "#1A2744"
+    gold: str = "#C9A227"
+    gold_bright: str = "#E0C35A"
+    ink: str = "#1A1A1A"
+    ink_muted: str = "#4A4035"
+    title: str = "#1A2744"
+    seal_red: str = "#B41E1E"
+    menh_line: str = "#C98989"
+    than_line: str = "#B5A47A"
+    badge_fill: str = "#1A2744"
+    badge_outline: str = "#C9A227"
+    # Logical 1x geometry; PNG is emitted at `scale` using `_resolve_style`.
+    pad: int = 36
+    cell: int = 310
+    footer: int = 108
+    outer_w: int = 14
+    grid_w: int = 2
+    scale: int = 2
+
+
+STYLE = LasoStyle()
+
 ELEMENT_COLORS = {
-    "Mộc": "#059669",  # Emerald Green
-    "Hỏa": "#DC2626",  # Crimson Red
-    "Thổ": "#D97706",  # Amber/Orange
-    "Kim": "#4B5563",  # Cool Gray
-    "Thủy": "#2563EB"  # Royal Blue
+    "Mộc": "#2E7D32",
+    "Hỏa": "#C62828",
+    "Thổ": "#B8860B",
+    "Kim": "#5C6670",
+    "Thủy": "#111111",
 }
 
-# 1-indexed Cung coordinates mapping on a 4x4 grid (col, row)
+# cung_so 1..12 → grid (col, row); Tý bottom-center-right convention
 CUNG_COORDS = {
-    1: (2, 3),   # Tý
-    2: (1, 3),   # Sửu
-    3: (0, 3),   # Dần
-    4: (0, 2),   # Mão
-    5: (0, 1),   # Thìn
-    6: (0, 0),   # Tỵ
-    7: (1, 0),   # Ngọ
-    8: (2, 0),   # Mùi
-    9: (3, 0),   # Thân
-    10: (3, 1),  # Dậu
-    11: (3, 2),  # Tuất
-    12: (3, 3),  # Hợi
+    1: (2, 3),
+    2: (1, 3),
+    3: (0, 3),
+    4: (0, 2),
+    5: (0, 1),
+    6: (0, 0),
+    7: (1, 0),
+    8: (2, 0),
+    9: (3, 0),
+    10: (3, 1),
+    11: (3, 2),
+    12: (3, 3),
 }
 
-# Standard 14 chính tinh IDs
+# Fixed chi by cung_so (Địa bàn earth-branch positions)
+CUNG_CHI = {
+    1: "Tý",
+    2: "Sửu",
+    3: "Dần",
+    4: "Mão",
+    5: "Thìn",
+    6: "Tỵ",
+    7: "Ngọ",
+    8: "Mùi",
+    9: "Thân",
+    10: "Dậu",
+    11: "Tuất",
+    12: "Hợi",
+}
+
+CHI_ASSET_KEYS = {
+    "Tý": "ty",
+    "Tí": "ty",
+    "Sửu": "suu",
+    "Dần": "dan",
+    "Mão": "mao",
+    "Mẹo": "mao",
+    "Thìn": "thin",
+    "Tỵ": "ti",
+    "Tị": "ti",
+    "Ngọ": "ngo",
+    "Mùi": "mui",
+    "Thân": "than",
+    "Dậu": "dau",
+    "Tuất": "tuat",
+    "Hợi": "hoi",
+}
+
+CHI_ORDER = ["Tý", "Sửu", "Dần", "Mão", "Thìn", "Tỵ", "Ngọ", "Mùi", "Thân", "Dậu", "Tuất", "Hợi"]
+
 CHINH_TINH_IDS = set(range(1, 15))
 
-# Transit stars mapping
 TRANSIT_STAR_DETAILS = {
     "Lưu Thái Tuế": {"display": "L.Thái Tuế", "element": "H", "type": 15},
     "Lưu Lộc Tồn": {"display": "L.Lộc Tồn", "element": "O", "type": 3},
@@ -46,23 +117,342 @@ TRANSIT_STAR_DETAILS = {
     "Lưu Thiên Hư": {"display": "L.Thiên Hư", "element": "T", "type": 12},
 }
 
-# Suffix maps for star attributes
 ATTR_SUFFIX_MAP = {
     "Miếu địa": "M",
     "Vượng địa": "V",
     "Đắc địa": "Đ",
     "Bình hòa": "B",
-    "Hãm địa": "H"
+    "Hãm địa": "H",
 }
 
+TRANG_SINH_SET = {
+    "Tràng sinh",
+    "Mộc dục",
+    "Quan đới",
+    "Lâm quan",
+    "Đế vượng",
+    "Suy",
+    "Bệnh",
+    "Tử",
+    "Mộ",
+    "Tuyệt",
+    "Thai",
+    "Dưỡng",
+}
+
+
+def _px(n: float, scale: int | None = None) -> int:
+    sc = STYLE.scale if scale is None else scale
+    return int(round(n * sc))
+
+
+def _resolve_style(style: LasoStyle = STYLE) -> LasoStyle:
+    """Physical canvas style: logical geometry × scale (sharper zoom)."""
+    if style.scale <= 1:
+        return style
+    sc = style.scale
+    return replace(
+        style,
+        pad=style.pad * sc,
+        cell=style.cell * sc,
+        footer=style.footer * sc,
+        outer_w=style.outer_w * sc,
+        grid_w=max(2, style.grid_w * sc),
+        scale=1,
+    )
+
+
+def _canvas_size(style: LasoStyle = STYLE) -> tuple[int, int]:
+    s = _resolve_style(style)
+    grid = s.cell * 4
+    w = s.pad * 2 + grid
+    h = s.pad * 2 + grid + s.footer
+    return w, h
+
+
+def _assets_dir() -> str:
+    return os.path.join(os.path.dirname(__file__), "_assets", "laso")
+
+
+@lru_cache(maxsize=128)
+def _load_asset(filename: str) -> Optional[Image.Image]:
+    path = os.path.join(_assets_dir(), filename)
+    root = os.path.realpath(_assets_dir())
+    real = os.path.realpath(path)
+    if not real.startswith(root + os.sep) and real != root:
+        return None
+    if not os.path.isfile(real):
+        return None
+    try:
+        im = Image.open(real).convert("RGBA")
+    except Exception:
+        return None
+    if filename.startswith("stitch_"):
+        return im
+    if filename.startswith("corner_"):
+        inset = max(4, int(round(min(im.size) * 0.09)))
+        im = im.crop((inset, inset, im.size[0] - inset, im.size[1] - inset))
+        im = _knockout_cream(im)
+        im = _knockout_dark(im)
+        bbox = im.getbbox()
+        return im.crop(bbox) if bbox else im
+    im = _knockout_cream(im)
+    if filename.startswith("chi_"):
+        im = _circular_medallion(im, drop_caption=True)
+    elif filename in ("dragon_left.png", "dragon_right.png"):
+        # Freeform S-dragons; circular mask shears whiskers/claws.
+        im = _strip_square_frame(im)
+        im = _knockout_cream(im, min_luma=165)
+    return im
+
+
+def _knockout_cream(im: Image.Image, min_luma: int = 198) -> Image.Image:
+    """Flood-fill parchment/white from the tile edges so medallions/dragons keep only the art."""
+    im = im.convert("RGBA")
+    w, h = im.size
+    px = im.load()
+
+    def is_bg(x: int, y: int) -> bool:
+        r, g, b, a = px[x, y]
+        if a < 20:
+            return True
+        mn, mx = min(r, g, b), max(r, g, b)
+        if mn >= min_luma:
+            return True
+        if mn >= min(170, min_luma - 10) and (mx - mn) < 78 and b >= 150:
+            return True
+        return False
+
+    stack = []
+    for x in range(w):
+        stack.append((x, 0))
+        stack.append((x, h - 1))
+    for y in range(h):
+        stack.append((0, y))
+        stack.append((w - 1, y))
+
+    seen = bytearray(w * h)
+    while stack:
+        x, y = stack.pop()
+        if x < 0 or y < 0 or x >= w or y >= h:
+            continue
+        idx = y * w + x
+        if seen[idx]:
+            continue
+        seen[idx] = 1
+        if not is_bg(x, y):
+            continue
+        px[x, y] = (0, 0, 0, 0)
+        stack.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+
+    # Second pass: punch remaining enclosed cream (inside gold rings)
+    for y in range(h):
+        for x in range(w):
+            if is_bg(x, y):
+                r, g, b, a = px[x, y]
+                if a > 0:
+                    px[x, y] = (r, g, b, 0)
+    return im
+
+
+def _knockout_dark(im: Image.Image) -> Image.Image:
+    """Flood-fill navy/black card fill from the tile edges (Stitch corner plates)."""
+    im = im.convert("RGBA")
+    w, h = im.size
+    px = im.load()
+
+    def is_bg(x: int, y: int) -> bool:
+        r, g, b, a = px[x, y]
+        if a < 20:
+            return True
+        if max(r, g, b) < 70 and b >= r - 8:
+            return True
+        return False
+
+    stack = []
+    for x in range(w):
+        stack.append((x, 0))
+        stack.append((x, h - 1))
+    for y in range(h):
+        stack.append((0, y))
+        stack.append((w - 1, y))
+
+    seen = bytearray(w * h)
+    while stack:
+        x, y = stack.pop()
+        if x < 0 or y < 0 or x >= w or y >= h:
+            continue
+        idx = y * w + x
+        if seen[idx]:
+            continue
+        seen[idx] = 1
+        if not is_bg(x, y):
+            continue
+        px[x, y] = (0, 0, 0, 0)
+        stack.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+    return im
+
+
+def _strip_square_frame(im: Image.Image) -> Image.Image:
+    """Peel the Stitch gold square card frame; keep freeform dragon art."""
+    im = im.convert("RGBA")
+    w, h = im.size
+    if w < 8 or h < 8:
+        return im
+    px = im.load()
+    thresh = 40
+    rows = [sum(1 for x in range(w) if px[x, y][3] > thresh) for y in range(h)]
+
+    y0, y1 = 0, h
+    while y0 < h and rows[y0] < max(4, w * 0.04):
+        y0 += 1
+    while y0 < h and rows[y0] >= w * 0.50:
+        y0 += 1
+    while y1 > y0 and rows[y1 - 1] < max(4, w * 0.04):
+        y1 -= 1
+    while y1 > y0 and rows[y1 - 1] >= w * 0.50:
+        y1 -= 1
+    if y1 - y0 < 8:
+        bbox = im.getbbox()
+        return im.crop(bbox) if bbox else im
+
+    band = im.crop((0, y0, w, y1))
+    bw, bh = band.size
+    bpx = band.load()
+    cols = [sum(1 for y in range(bh) if bpx[x, y][3] > thresh) for x in range(bw)]
+    x0, x1 = 0, bw
+    while x0 < bw and cols[x0] < max(4, bh * 0.04):
+        x0 += 1
+    while x0 < bw and cols[x0] >= bh * 0.50:
+        x0 += 1
+    while x1 > x0 and cols[x1 - 1] < max(4, bh * 0.04):
+        x1 -= 1
+    while x1 > x0 and cols[x1 - 1] >= bh * 0.50:
+        x1 -= 1
+    if x1 - x0 < 8:
+        bbox = band.getbbox()
+        return band.crop(bbox) if bbox else band
+
+    inner = band.crop((x0, 0, x1, bh))
+    bbox = inner.getbbox()
+    if not bbox:
+        return inner
+    return inner.crop(bbox)
+
+
+def _circular_medallion(im: Image.Image, drop_caption: bool = True) -> Image.Image:
+    """Keep the full round badge: strip only the outer gold square and optional caption."""
+    im = im.convert("RGBA")
+    w, h = im.size
+    if w < 8 or h < 8:
+        return im
+    px = im.load()
+    thresh = 40
+    rows = [sum(1 for x in range(w) if px[x, y][3] > thresh) for y in range(h)]
+
+    y0, y1 = 0, h
+    while y0 < h and rows[y0] >= w * 0.70:
+        y0 += 1
+    while y1 > y0 and rows[y1 - 1] >= w * 0.70:
+        y1 -= 1
+    while y0 < y1 and rows[y0] < max(8, w * 0.12):
+        y0 += 1
+    while y1 > y0 and rows[y1 - 1] < max(8, w * 0.12):
+        y1 -= 1
+
+    if drop_caption:
+        gap_from = y0 + int((y1 - y0) * 0.55)
+        for y in range(gap_from, y1):
+            if rows[y] <= max(6, w // 16):
+                y1 = y
+                break
+
+    if y1 - y0 < 8:
+        bbox = im.getbbox()
+        return im.crop(bbox) if bbox else im
+
+    band = im.crop((0, y0, w, y1))
+    bw, bh = band.size
+    bpx = band.load()
+    cols = [sum(1 for y in range(bh) if bpx[x, y][3] > thresh) for x in range(bw)]
+    # Peel only the 1–6px gold-square edges, never the medallion body.
+    x0, x1 = 0, bw
+    for i in range(min(6, bw)):
+        if cols[i] >= bh * 0.70 or cols[i] < max(4, bh * 0.08):
+            x0 = i + 1
+        else:
+            break
+    for i in range(bw - 1, max(bw - 7, x0), -1):
+        if cols[i] >= bh * 0.70 or cols[i] < max(4, bh * 0.08):
+            x1 = i
+        else:
+            break
+    if x1 - x0 < 8:
+        bbox = band.getbbox()
+        return band.crop(bbox) if bbox else band
+
+    inner = band.crop((x0, 0, x1, bh))
+    tw, th = inner.size
+    cx, cy = tw / 2.0, th / 2.0
+    # Inscribed circle minus 0.5px so corners stay transparent; do not shrink the art.
+    r = min(cx, cy) - 0.5
+    if r < 8:
+        bbox = inner.getbbox()
+        return inner.crop(bbox) if bbox else inner
+    mask = Image.new("L", inner.size, 0)
+    ImageDraw.Draw(mask).ellipse((cx - r, cy - r, cx + r, cy + r), fill=255)
+    alpha = ImageChops.multiply(inner.split()[-1], mask)
+    inner.putalpha(alpha)
+    trimmed = inner.getbbox()
+    if not trimmed:
+        return inner
+    inner = inner.crop(trimmed)
+    # Keep the gold ring off the bitmap edge so later scale/paste doesn't flatten it.
+    pad = max(3, int(round(min(inner.size) * 0.06)))
+    canvas = Image.new("RGBA", (inner.width + pad * 2, inner.height + pad * 2), (0, 0, 0, 0))
+    canvas.paste(inner, (pad, pad), inner)
+    return canvas
+
+
+def _paste_rgba(base: Image.Image, overlay: Optional[Image.Image], xy: tuple[int, int]) -> None:
+    if overlay is None:
+        return
+    if base.mode != "RGBA":
+        base.paste(overlay, xy, overlay)
+        return
+    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    layer.paste(overlay, xy, overlay)
+    composited = Image.alpha_composite(base, layer)
+    base.paste(composited)
+
+
+def _fit_square(im: Image.Image, size: int, pad: int = 1) -> Image.Image:
+    """Scale into a square canvas without stretching or re-clipping the badge."""
+    inner = max(8, size - max(0, pad) * 2)
+    fitted = im.copy()
+    fitted.thumbnail((inner, inner), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ox = (size - fitted.width) // 2
+    oy = (size - fitted.height) // 2
+    canvas.paste(fitted, (ox, oy), fitted)
+    return canvas
+
+
+def _paste_rgba_outside(base: Image.Image, overlay: Optional[Image.Image], xy: tuple[int, int], hole: tuple[int, int, int, int]) -> None:
+    """Paste overlay, clearing any pixels that would land inside ``hole`` (palace grid)."""
+    if overlay is None:
+        return
+    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+    layer.paste(overlay, xy, overlay)
+    mask = Image.new("L", base.size, 255)
+    ImageDraw.Draw(mask).rectangle(hole, fill=0)
+    r, g, b, a = layer.split()
+    layer = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a, mask)))
+    composited = Image.alpha_composite(base.convert("RGBA"), layer)
+    base.paste(composited)
+
+
 def get_font(size=12, bold=False, font_path=None):
-    """Resolve font dynamically according to priority:
-    1. Explicit custom font_path (if provided, valid type, and file exists)
-    2. Package-bundled Unicode font (tuvi_mcp/_fonts/Roboto-*.ttf)
-    3. OS System Desktop Fonts (macOS, Linux, Windows)
-    4. Pillow default fallback (with size parameter support for Pillow >=10.1)
-    """
-    # 1. Custom font_path
     if font_path and isinstance(font_path, (str, os.PathLike)):
         try:
             if os.path.exists(font_path):
@@ -71,11 +461,10 @@ def get_font(size=12, bold=False, font_path=None):
             pass
 
     font_filename = "Roboto-Bold.ttf" if bold else "Roboto-Regular.ttf"
-
-    # 2. Try bundled package font
     bundled_path = None
     try:
         from importlib.resources import files
+
         p = files("tuvi_mcp").joinpath("_fonts", font_filename)
         p_str = str(p)
         if os.path.exists(p_str):
@@ -92,23 +481,22 @@ def get_font(size=12, bold=False, font_path=None):
     except Exception:
         pass
 
-    # 3. Try OS System Fonts
-    paths = []
+    # Prefer serif for traditional feel when available
     if bold:
         paths = [
+            "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf",
+            "/Library/Fonts/Times New Roman Bold.ttf",
             "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-            "/Library/Fonts/Arial Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-            "C:\\Windows\\Fonts\\arialbd.ttf"
+            "C:\\Windows\\Fonts\\timesbd.ttf",
         ]
     else:
         paths = [
+            "/System/Library/Fonts/Supplemental/Times New Roman.ttf",
+            "/Library/Fonts/Times New Roman.ttf",
             "/System/Library/Fonts/Supplemental/Arial.ttf",
-            "/Library/Fonts/Arial.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-            "C:\\Windows\\Fonts\\arial.ttf"
+            "C:\\Windows\\Fonts\\times.ttf",
         ]
 
     for p in paths:
@@ -118,7 +506,6 @@ def get_font(size=12, bold=False, font_path=None):
         except Exception:
             pass
 
-    # 4. Pillow default fallback (supports size in Pillow >= 10.1.0)
     try:
         return ImageFont.load_default(size=size)
     except TypeError:
@@ -127,420 +514,525 @@ def get_font(size=12, bold=False, font_path=None):
         except Exception:
             return None
 
-def draw_badge(draw, cx, cy, text, w, h, font=None):
-    """Draw a dark badge on the shared border of cungs for Tuần/Triệt."""
-    x0 = cx - w // 2
-    y0 = cy - h // 2
-    x1 = cx + w // 2
-    y1 = cy + h // 2
 
-    draw.rounded_rectangle([x0, y0, x1, y1], radius=4, fill="#111827", outline="#F3F4F6", width=1)
+def _chi_key_for_cung(cung_so: int, cung_ten: str = "") -> str:
+    chi = CUNG_CHI.get(cung_so, "")
+    if not chi and cung_ten:
+        parts = cung_ten.strip().split()
+        chi = parts[-1] if parts else ""
+    return CHI_ASSET_KEYS.get(chi, "")
+
+
+def _chi_icon(cung_so: int, cung_ten: str = "", size: int = 36, gold: bool = False) -> Optional[Image.Image]:
+    key = _chi_key_for_cung(cung_so, cung_ten)
+    if not key:
+        return None
+    name = f"chi_gold_{key}.png" if gold else f"chi_{key}.png"
+    icon = _load_asset(name)
+    if icon is None and gold:
+        icon = _load_asset(f"chi_{key}.png")
+    if icon is None:
+        return None
+    return _fit_square(icon, size, pad=1)
+
+
+def dich_cung(cung_start, offset):
+    val = cung_start + offset
+    if val % 12 == 0:
+        return 12
+    return val % 12
+
+
+def _legend_colon(draw, x, mid_y, color="#E0C35A", scale: int | None = None):
+    """Two dots, taller than Roboto's punctuation so M : Miếu stays readable."""
+    sc = STYLE.scale if scale is None else scale
+    r, gap = 1.4 * sc, 3.2 * sc
+    for dy in (-gap, gap):
+        draw.ellipse([x, mid_y + dy - r, x + 2 * r, mid_y + dy + r], fill=color)
+    return x + _px(6, sc)
+
+
+def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE):
+    x0, y0, x1, y1 = cx - w // 2, cy - h // 2, cx + w // 2, cy + h // 2
+    draw.rounded_rectangle(
+        [x0, y0, x1, y1],
+        radius=_px(3),
+        fill=style.badge_fill,
+        outline=style.badge_outline,
+        width=max(1, _px(1)),
+    )
     if font is None:
-        font = get_font(size=11, bold=True)
+        font = get_font(size=_px(9), bold=True)
     tw = draw.textlength(text, font=font)
-    th = 11
-    draw.text((cx - tw / 2, cy - th / 2 - 1), text, fill="#FFFFFF", font=font)
+    th = _px(10)
+    try:
+        bbox = font.getbbox(text)
+        th = bbox[3] - bbox[1]
+    except Exception:
+        pass
+    draw.text((cx - tw / 2, cy - th / 2 - _px(1)), text, fill="#FFFFFF", font=font)
 
-def draw_tuan_triet(draw, dia_ban, font_bold=None):
-    """Draw Tuần/Triệt border badges exactly on shared borders of cungs (Row height 400)."""
+
+def _tuan_triet_anchor(
+    c1_id: int, c2_id: int, ox: int, oy: int, badge_w: int, badge_h: int, style: LasoStyle
+) -> tuple[int, int, str]:
+    """Park badges on the outer pad or fully inside thiên bàn — never on palace footers."""
+    col1, row1 = CUNG_COORDS[c1_id]
+    col2, row2 = CUNG_COORDS[c2_id]
+    cx0, cy0 = ox + style.cell, oy + style.cell
+    cx1, cy1 = ox + 3 * style.cell, oy + 3 * style.cell
+    mx = badge_w // 2 + _px(14)
+    my = badge_h // 2 + _px(6)
+
+    def clamp_in_center(x: float, y: float) -> tuple[int, int]:
+        x = min(max(x, cx0 + mx), cx1 - mx)
+        y = min(max(y, cy0 + my), cy1 - my)
+        return int(x), int(y)
+
+    if row1 == row2:
+        bx = ox + max(col1, col2) * style.cell
+        if row1 == 0:
+            return bx, max(badge_h // 2 + _px(2), oy - badge_h // 2 - _px(4)), "top"
+        x, y = clamp_in_center(bx, cy1 - my)
+        return x, y, "center-bottom"
+    if col1 == col2:
+        seam_y = oy + max(row1, row2) * style.cell
+        if col1 == 0:
+            x, y = clamp_in_center(cx0 + mx, seam_y)
+            return x, y, "left"
+        # Right-hand palaces: inside thiên bàn, left of the seal — not on cung footers
+        x = cx1 - _px(90) - badge_w // 2 - _px(12)
+        x, y = clamp_in_center(x, seam_y)
+        return x, y, "right"
+    return ox, oy, "none"
+
+
+def draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=None, style: LasoStyle = STYLE):
     pairs = [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10), (11, 12)]
-
+    font = get_font(_px(16), True)
+    badge_w, badge_h = _px(76), _px(28)
+    cw, ch = _canvas_size(style)
     for c1_id, c2_id in pairs:
         c1 = next((c for c in dia_ban if c["cung_so"] == c1_id), None)
         c2 = next((c for c in dia_ban if c["cung_so"] == c2_id), None)
         if not c1 or not c2:
             continue
-
-        col1, row1 = CUNG_COORDS[c1_id]
-        col2, row2 = CUNG_COORDS[c2_id]
-
-        if col1 == col2:  # Horizontal border
-            bx = col1 * 300 + 150
-            by = max(row1, row2) * 400
-        elif row1 == row2:  # Vertical border
-            bx = max(col1, col2) * 300
-            by = row1 * 400 + 200
-        else:
-            continue
-
-        badge_w, badge_h = 55, 22
+        labels = []
         if c1.get("tuan_trung") and c2.get("tuan_trung"):
-            draw_badge(draw, bx, by, "Tuần", badge_w, badge_h, font=font_bold)
+            labels.append("Tuần")
         if c1.get("triet_lo") and c2.get("triet_lo"):
-            draw_badge(draw, bx, by, "Triệt", badge_w, badge_h, font=font_bold)
+            labels.append("Triệt")
+        if not labels:
+            continue
+        bx, by, edge = _tuan_triet_anchor(c1_id, c2_id, ox, oy, badge_w, badge_h, style)
+        for i, lab in enumerate(labels):
+            cx, cy = bx, by
+            if i:
+                if edge in ("top", "center-bottom"):
+                    cx += badge_w + _px(6)
+                else:
+                    cy += badge_h + _px(6)
+            cx = max(badge_w // 2 + 1, min(cw - badge_w // 2 - 1, cx))
+            cy = max(badge_h // 2 + 1, min(ch - badge_h // 2 - 1, cy))
+            draw_badge(draw, cx, cy, lab, badge_w, badge_h, font=font, style=style)
 
-def dich_cung(cung_start, offset):
-    val = (cung_start + offset)
-    if val % 12 == 0:
-        return 12
-    return val % 12
 
-def draw_lines_behind_center(draw, m_cung, t_cung):
-    """Draw the connecting lines of Mệnh and Thân Tam Hợp (Triads) & Xung Chiếu (Row height 400)."""
+def draw_lines_behind_center(draw, m_cung, t_cung, ox, oy, style: LasoStyle = STYLE):
     def get_center(cung_id):
         col, row = CUNG_COORDS[cung_id]
-        return col * 300 + 150, row * 400 + 200
+        return ox + col * style.cell + style.cell // 2, oy + row * style.cell + style.cell // 2
 
-    # Draw Mệnh lines (Light Red)
     if m_cung:
-        p_menh = get_center(m_cung)
-        p_triad1 = get_center(dich_cung(m_cung, 4))
-        p_triad2 = get_center(dich_cung(m_cung, 8))
-        p_opposite = get_center(dich_cung(m_cung, 6))
-
-        # Triad Triangle
-        draw.line([p_menh, p_triad1, p_triad2, p_menh], fill="#FCA5A5", width=2)
-        # Opposite line
-        draw.line([p_menh, p_opposite], fill="#FCA5A5", width=2)
-
-    # Draw Thân lines (Light Gray)
+        p = get_center(m_cung)
+        draw.line([p, get_center(dich_cung(m_cung, 4)), get_center(dich_cung(m_cung, 8)), p], fill=style.menh_line, width=2)
+        draw.line([p, get_center(dich_cung(m_cung, 6))], fill=style.menh_line, width=2)
     if t_cung and t_cung != m_cung:
-        p_than = get_center(t_cung)
-        p_triad1 = get_center(dich_cung(t_cung, 4))
-        p_triad2 = get_center(dich_cung(t_cung, 8))
-        p_opposite = get_center(dich_cung(t_cung, 6))
+        p = get_center(t_cung)
+        draw.line([p, get_center(dich_cung(t_cung, 4)), get_center(dich_cung(t_cung, 8)), p], fill=style.than_line, width=2)
+        draw.line([p, get_center(dich_cung(t_cung, 6))], fill=style.than_line, width=2)
 
-        # Triad Triangle
-        draw.line([p_than, p_triad1, p_triad2, p_than], fill="#D1D5DB", width=2)
-        # Opposite line
-        draw.line([p_than, p_opposite], fill="#D1D5DB", width=2)
 
 def generate_laso_image(
-    chart_data: dict, 
-    current_year: int = None, 
-    font_path: str = None, 
-    font_bold_path: str = None
+    chart_data: dict,
+    current_year: int = None,
+    font_path: str = None,
+    font_bold_path: str = None,
 ) -> str:
-    """Renders an A4 aspect ratio (1200x1697 px) Tu Vi horoscope image from chart data.
-
-    :param chart_data: Dict containing 'thien_ban', 'dia_ban', and optional 'transit_stars'.
-    :param current_year: Transit target Lunar year for header label.
-    :param font_path: Optional file path to a custom regular TrueType (.ttf) font.
-    :param font_bold_path: Optional file path to a custom bold TrueType (.ttf) font.
-    :return: File path to generated PNG image.
-    """
+    """Render traditional square-ish lá số PNG (Stitch minh-họa style)."""
+    style = _resolve_style(STYLE)
     thien_ban = chart_data.get("thien_ban", {})
-    dia_ban = chart_data.get("dia_ban", [])
+    dia_ban = list(chart_data.get("dia_ban", []))
 
-    # Identify Mệnh and Thân cungs
-    m_cung = None
-    t_cung = None
+    m_cung = t_cung = None
     for cung in dia_ban:
         if cung.get("cung_chu") == "Mệnh":
             m_cung = cung["cung_so"]
         if cung.get("cung_than"):
             t_cung = cung["cung_so"]
 
-    # Enrich dia_ban with transit stars if present
     transit_stars = chart_data.get("transit_stars", [])
     if transit_stars:
-        enriched_dia_ban = []
+        enriched = []
         for cung in dia_ban:
-            cung_copy = dict(cung)
-            cung_copy["sao"] = list(cung["sao"])
-            enriched_dia_ban.append(cung_copy)
-
+            cc = dict(cung)
+            cc["sao"] = list(cung.get("sao", []))
+            enriched.append(cc)
         for t_star in transit_stars:
-            name = t_star["name"]
-            c_num = t_star["cung_so"]
-            details = TRANSIT_STAR_DETAILS.get(name)
-            if details:
-                target_cung = next((c for c in enriched_dia_ban if c["cung_so"] == c_num), None)
-                if target_cung:
-                    target_cung["sao"].append({
-                        "id": 200 + len(transit_stars),
+            details = TRANSIT_STAR_DETAILS.get(t_star["name"])
+            if not details:
+                continue
+            target = next((c for c in enriched if c["cung_so"] == t_star["cung_so"]), None)
+            if target:
+                target["sao"].append(
+                    {
+                        "id": 200,
                         "name": details["display"],
                         "element": details["element"],
                         "type": details["type"],
                         "yin_yang": 0,
-                        "attribute": None
-                    })
-        dia_ban = enriched_dia_ban
+                        "attribute": None,
+                    }
+                )
+        dia_ban = enriched
 
-    # 1. Canvas Setup (A4 equivalent size: 1200x1697 px)
-    img = Image.new("RGB", (1200, 1697), "#FAFAFA")
+    cw, ch = _canvas_size(style)
+    parchment_rgb = (251, 245, 233)
+    parchment_deep_rgb = (243, 228, 200)
+    img = Image.new("RGBA", (cw, ch), (*parchment_deep_rgb, 255))
     draw = ImageDraw.Draw(img)
 
-    # 2. Outer Boxes Background Fill (Row height 400)
-    for c_id, (col, row) in CUNG_COORDS.items():
-        x0, y0 = col * 300, row * 400
-        x1, y1 = x0 + 300, y0 + 400
-        draw.rectangle([x0, y0, x1, y1], fill="#FFFFFF")
+    ox = style.pad
+    oy = style.pad
+    grid = style.cell * 4
 
-    # 3. Center region solid fill (300 to 900 px, 400 to 1200 px)
-    draw.rectangle([300, 400, 900, 1200], fill="#FFFFFF")
+    # Full-chart eastern dragon watermark (behind grid + text)
+    dragon_bg = _load_asset("dragon_bg.png")
+    if dragon_bg is not None:
+        dw = dragon_bg.resize((grid, grid), Image.Resampling.LANCZOS)
+        r, g, b, a = dw.split()
+        a = a.point(lambda v: int(v * 0.36))
+        dw = Image.merge("RGBA", (r, g, b, a))
+        _paste_rgba(img, dw, (ox, oy))
 
-    # 4. Draw Connecting Lines (under the text)
-    draw_lines_behind_center(draw, m_cung, t_cung)
+    # Outer navy frame + gold inner line
+    draw.rectangle([0, 0, cw - 1, ch - 1], outline=style.navy, width=style.outer_w)
+    inset = style.outer_w + 3
+    draw.rectangle([inset, inset, cw - 1 - inset, ch - 1 - inset], outline=style.gold, width=_px(2))
 
-    # 5. Draw Borders
+    # Corner ornaments — L filigree clipped to the outer frame, never palace text
+    corner_sz = _px(72)
+    hole = (ox, oy, ox + grid, oy + grid)
+    for key, xy in (
+        ("tl", (1, 1)),
+        ("tr", (cw - corner_sz - 1, 1)),
+        ("bl", (1, ch - corner_sz - 1)),
+        ("br", (cw - corner_sz - 1, ch - corner_sz - 1)),
+    ):
+        corner = _load_asset(f"corner_{key}.png")
+        if corner:
+            corner = corner.resize((corner_sz, corner_sz), Image.Resampling.LANCZOS)
+            _paste_rgba_outside(img, corner, xy, hole)
+
+    # Skip opaque cell fills so the dragon watermark shows through the grid.
+    cx0, cy0 = ox + style.cell, oy + style.cell
+    cx1, cy1 = ox + style.cell * 3, oy + style.cell * 3
+
+    # Palace grid only — do not run navy lines through the merged center.
     for i in range(5):
-        draw.line([(i * 300, 0), (i * 300, 1600)], fill="#D1D5DB", width=1)
-    for i in range(5):
-        draw.line([(0, i * 400), (1200, i * 400)], fill="#D1D5DB", width=1)
+        x = ox + i * style.cell
+        y = oy + i * style.cell
+        if i in (1, 2, 3):
+            draw.line([(x, oy), (x, cy0)], fill=style.navy, width=style.grid_w)
+            draw.line([(x, cy1), (x, oy + grid)], fill=style.navy, width=style.grid_w)
+            draw.line([(ox, y), (cx0, y)], fill=style.navy, width=style.grid_w)
+            draw.line([(cx1, y), (ox + grid, y)], fill=style.navy, width=style.grid_w)
+        else:
+            draw.line([(x, oy), (x, oy + grid)], fill=style.navy, width=style.grid_w)
+            draw.line([(ox, y), (ox + grid, y)], fill=style.navy, width=style.grid_w)
+    draw.rectangle([cx0, cy0, cx1, cy1], outline=style.gold, width=_px(3))
 
-    # Center region borders
-    draw.rectangle([300, 400, 900, 1200], outline="#9CA3AF", width=2)
+    bold_path = font_bold_path or font_path
+    font_sm = get_font(_px(15), False, font_path)
+    font_reg = get_font(_px(16), False, font_path)
+    font_bold = get_font(_px(16), True, bold_path)
+    font_palace = get_font(_px(22), True, bold_path)
+    font_star = get_font(_px(18), True, bold_path)
+    font_chi = get_font(_px(17), True, bold_path)
 
-    # 6. Render Cungs (Row height 400)
-    reg_font_path = font_path
-    bold_font_path = font_bold_path or font_path
-
-    font_bold = get_font(size=12, bold=True, font_path=bold_font_path)
-    font_regular = get_font(size=12, bold=False, font_path=reg_font_path)
-    font_title = get_font(size=15, bold=True, font_path=bold_font_path)
-    font_chinh_tinh = get_font(size=14, bold=True, font_path=bold_font_path)
-
+    # --- Palaces ---
     for cung in dia_ban:
         c_id = cung["cung_so"]
         col, row = CUNG_COORDS[c_id]
-        x0, y0 = col * 300, row * 400
-        x1, y1 = x0 + 300, y0 + 400
+        x0 = ox + col * style.cell
+        y0 = oy + row * style.cell
+        x1 = x0 + style.cell
+        y1 = y0 + style.cell
 
-        # Abbr Can-Chi (e.g. "Đ.Tỵ")
-        can_chi_str = cung.get("cung_ten", "")
-        if " " in can_chi_str:
-            can, chi = can_chi_str.split(" ", 1)
-            can_abbr = can[0] if len(can) > 0 else ""
-            cung_abbr = f"{can_abbr}.{chi}"
+        can_chi = cung.get("cung_ten", "")
+        chi_name = CUNG_CHI.get(c_id, "")
+        if " " in can_chi:
+            can = can_chi.split(" ", 1)[0]
+            can_abbr = (can[:1] + ".") if can else ""
         else:
-            cung_abbr = can_chi_str
+            can_abbr = ""
 
-        # Polarity & Element
-        polarity = "+" if cung.get("cung_so", 1) % 2 != 0 else "-"
-        hanh_cung = cung.get("hanh_cung", "")
-        element_str = f"{polarity}{hanh_cung}"
-
-        # Đại Vận and Lunar Month
+        hanh = cung.get("hanh_cung", "")
         dai_han = cung.get("dai_han")
-        dai_han_str = str(dai_han) if dai_han is not None else ""
+        dai_str = str(dai_han) if dai_han is not None else ""
         month_idx = (c_id - 3) % 12 + 1
-        month_str = f"Th.{month_idx}"
 
-        # Headers drawing
-        draw.text((x0 + 10, y0 + 10), cung_abbr, fill="#1F2937", font=font_bold)
-        draw.text((x0 + 10, y0 + 26), element_str, fill="#4B5563", font=font_regular)
+        # Header: index/chi first, circular medallion below, palace title last
+        # (never overlay the red title — especially tight in the four corner cung)
+        is_corner = (col in (0, 3) and row in (0, 3))
+        icon_sz = _px(50) if is_corner else _px(60)
+        idx_x = x0 + (_px(18) if is_corner and col == 0 else _px(6))
+        chi_pad = _px(20) if is_corner and col == 3 else _px(8)
+        draw.text((idx_x, y0 + _px(4)), str(c_id), fill=style.ink_muted, font=font_sm)
+        chi_label = f"{can_abbr}{chi_name}".upper()
+        twc = draw.textlength(chi_label, font=font_chi)
+        draw.text((x1 - chi_pad - twc, y0 + _px(4)), chi_label, fill=style.ink, font=font_chi)
+        if dai_str:
+            tw = draw.textlength(dai_str, font=font_bold)
+            draw.text((x1 - chi_pad - tw, y0 + _px(22)), dai_str, fill=style.ink_muted, font=font_bold)
 
-        tw_dh = draw.textlength(dai_han_str, font=font_bold)
-        draw.text((x1 - 10 - tw_dh, y0 + 10), dai_han_str, fill="#1F2937", font=font_bold)
-        tw_mon = draw.textlength(month_str, font=font_regular)
-        draw.text((x1 - 10 - tw_mon, y0 + 26), month_str, fill="#4B5563", font=font_regular)
-
-        # Cung Name (e.g. "NÔ BỘC")
-        cung_chu = cung.get("cung_chu", "")
-        cung_title = cung_chu.upper()
-        if cung.get("cung_than"):
-            cung_title += "<THÂN>"
-
-        cung_color = ELEMENT_COLORS.get(hanh_cung, "#1F2937")
-        tw_title = draw.textlength(cung_title, font=font_title)
-        draw.text((x0 + 150 - tw_title / 2, y0 + 16), cung_title, fill=cung_color, font=font_title)
-
-        stars = cung.get("sao", [])
-
-        chinh_tinh_list = []
-        cang_tinh_list = []
-        saut_tinh_list = []
-        trang_sinh_star = ""
-
-        for s in stars:
-            s_name = s.get("name", "")
-            s_id = s.get("id")
-            s_type = s.get("type", 2)
-            s_element = s.get("element", "")
-            s_attr = s.get("attribute", "")
-
-            el_map = {"M": "Mộc", "H": "Hỏa", "O": "Thổ", "K": "Kim", "T": "Thủy"}
-            s_element_full = el_map.get(s_element, s_element)
-
-            trang_sinh_set = {"Tràng sinh", "Mộc dục", "Quan đới", "Lâm quan", "Đế vượng", "Suy", "Bệnh", "Tử", "Mộ", "Tuyệt", "Thai", "Dưỡng"}
-            if s_name in trang_sinh_set:
-                trang_sinh_star = s_name
-                continue
-
-            attr_short = ATTR_SUFFIX_MAP.get(s_attr, "")
-            attr_str = f" ({attr_short})" if attr_short else ""
-            s_color = ELEMENT_COLORS.get(s_element_full, "#1F2937")
-
-            if s_id in CHINH_TINH_IDS:
-                y_y = s.get("yin_yang", 0)
-                prefix = "+" if y_y == 1 else "-" if y_y == -1 else ""
-                display_name = f"{prefix}{s_name.upper()}{attr_str}"
-                chinh_tinh_list.append((display_name, s_color))
-            elif s_type < 10:
-                display_name = f"{s_name}{attr_str}"
-                cang_tinh_list.append((display_name, s_color))
+        icon = _chi_icon(c_id, can_chi, size=icon_sz)
+        icon_x = x0 + (style.cell - icon_sz) // 2
+        icon_y = y0 + _px(20)
+        if is_corner:
+            # Nudge toward the chart center, away from outer filigree / labels
+            if col == 0:
+                icon_x += _px(10)
             else:
-                display_name = f"{s_name}{attr_str}"
-                saut_tinh_list.append((display_name, s_color))
+                icon_x -= _px(10)
+            if row == 0:
+                icon_y += _px(4)
+        if icon:
+            _paste_rgba(img, icon, (icon_x, icon_y))
 
-        # Draw Chính tinh
-        cy_chinh = y0 + 55
-        for ct_name, ct_col in chinh_tinh_list:
-            tw_ct = draw.textlength(ct_name, font=font_chinh_tinh)
-            draw.text((x0 + 75 - tw_ct / 2, cy_chinh), ct_name, fill=ct_col, font=font_chinh_tinh)
-            cy_chinh += 18
+        palace = cung.get("cung_chu", "").upper()
+        if cung.get("cung_than"):
+            palace += " · THÂN"
+        twp = draw.textlength(palace, font=font_palace)
+        title_y = icon_y + icon_sz + (_px(14) if is_corner else _px(12))
+        draw.text((x0 + style.cell / 2 - twp / 2, title_y), palace, fill=style.seal_red, font=font_palace)
 
-        # Draw Cát tinh (Left column)
-        cy_cat = max(cy_chinh + 5, y0 + 95)
-        for cat_name, cat_col in cang_tinh_list:
-            draw.text((x0 + 15, cy_cat), cat_name, fill=cat_col, font=font_bold)
-            cy_cat += 18
+        chinh, cat, sat = [], [], []
+        trang = ""
+        for s in cung.get("sao", []):
+            name = s.get("name", "")
+            if name in TRANG_SINH_SET:
+                trang = name
+                continue
+            el = {"M": "Mộc", "H": "Hỏa", "O": "Thổ", "K": "Kim", "T": "Thủy"}.get(s.get("element", ""), s.get("element", ""))
+            color = ELEMENT_COLORS.get(el, style.ink)
+            attr = ATTR_SUFFIX_MAP.get(s.get("attribute", ""), "")
+            suffix = f" ({attr})" if attr else ""
+            sid, stype = s.get("id"), s.get("type", 2)
+            yy = s.get("yin_yang", 0)
+            prefix = "+" if yy == 1 else "-" if yy == -1 else ""
+            if sid in CHINH_TINH_IDS:
+                chinh.append((f"{prefix}{name.upper()}{suffix}", color))
+            elif stype < 10:
+                cat.append((f"{name}{suffix}", color))
+            else:
+                sat.append((f"{name}{suffix}", color))
 
-        # Draw Sát tinh (Right column)
-        cy_sat = y0 + 55
-        for sat_name, sat_col in saut_tinh_list:
-            draw.text((x0 + 160, cy_sat), sat_name, fill=sat_col, font=font_bold)
-            cy_sat += 18
+        # Stack: title → chính tinh → two auxiliary columns (never overlap title)
+        line_h = _px(20)
+        cy = title_y + _px(28)
+        for nm, colr in chinh[:2]:
+            tw = draw.textlength(nm, font=font_star)
+            draw.text((x0 + style.cell / 2 - tw / 2, cy), nm, fill=colr, font=font_star)
+            cy += line_h
 
-        # Draw Bottom metadata (Đại Vận label, Tràng Sinh, Lưu Niên label)
-        if trang_sinh_star:
-            tw_ts = draw.textlength(trang_sinh_star, font=font_regular)
-            draw.text((x0 + 150 - tw_ts / 2, y0 + 378), trang_sinh_star, fill="#1F2937", font=font_regular)
+        aux_top = cy + _px(4)
+        footer_limit = y1 - _px(26)
+        y_left = aux_top
+        for nm, colr in cat:
+            if y_left + line_h > footer_limit:
+                break
+            draw.text((x0 + _px(8), y_left), nm, fill=colr, font=font_bold)
+            y_left += line_h
 
-        active_dh_cung = chart_data.get("dai_han", {}).get("cung_so") if isinstance(chart_data.get("dai_han"), dict) else None
-        if not active_dh_cung and "target_period" in chart_data:
-            age = chart_data["target_period"].get("current_age", 1)
-            for c in dia_ban:
-                ds = c.get("dai_han")
-                if ds is not None and ds <= age < ds + 10:
-                    active_dh_cung = c["cung_so"]
-                    break
-        if not active_dh_cung:
-            active_dh_cung = m_cung
+        y_right = aux_top
+        for nm, colr in sat:
+            if y_right + line_h > footer_limit:
+                break
+            draw.text((x0 + style.cell // 2 + _px(6), y_right), nm, fill=colr, font=font_bold)
+            y_right += line_h
 
-        REL_NAMES = ["MỆNH", "PHỤ", "PHÚC", "ĐIỀN", "QUAN", "NÔ", "DI", "TẬT", "TÀI", "TỬ", "PHỐI", "HUYNH"]
-        offset_dv = (c_id - active_dh_cung + 12) % 12
+        # Footer of cell
+        draw.text((x0 + _px(8), y1 - _px(22)), f"Tháng {month_idx}", fill=style.ink_muted, font=font_sm)
+        if trang:
+            tw = draw.textlength(trang, font=font_reg)
+            draw.text((x0 + style.cell / 2 - tw / 2, y1 - _px(22)), trang, fill=style.ink, font=font_reg)
+        if hanh:
+            tw = draw.textlength(hanh, font=font_sm)
+            draw.text((x1 - _px(12) - tw, y1 - _px(22)), hanh, fill=style.ink_muted, font=font_sm)
 
-        dv_label = f"ĐV.{REL_NAMES[offset_dv]}"
-        draw.text((x0 + 10, y0 + 378), dv_label, fill="#4B5563", font=font_regular)
+    draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=font_bold, style=style)
 
-        ln_label = f"LN.{REL_NAMES[offset_dv]}"
-        tw_ln = draw.textlength(ln_label, font=font_regular)
-        draw.text((x1 - 10 - tw_ln, y0 + 378), ln_label, fill="#4B5563", font=font_regular)
+    # --- Center Thiên bàn: even vertical rhythm across the 2×2 square ---
+    font_title = get_font(_px(48), True, bold_path)
+    font_name = get_font(_px(28), True, bold_path)
+    font_k = get_font(_px(20), False, font_path)
+    font_v = get_font(_px(22), True, bold_path)
 
-    # 7. Draw Tuần and Triệt borders
-    draw_tuan_triet(draw, dia_ban, font_bold=font_bold)
-
-    # 8. Render Center Region details (600x800 px)
-    font_logo = get_font(size=14, bold=True, font_path=bold_font_path)
-    font_logo_sub = get_font(size=11, bold=False, font_path=reg_font_path)
-
-    logo_str = "TẠO BỞI NMHAAA3218/TUVIMCP"
-    logo_sub = "https://github.com/nmhaaa3218/TuViMCP"
-
-    tw_l = draw.textlength(logo_str, font=font_logo)
-    draw.text((600 - tw_l / 2, 430), logo_str, fill="#1E3A8A", font=font_logo)
-
-    tw_ls = draw.textlength(logo_sub, font=font_logo_sub)
-    draw.text((600 - tw_ls / 2, 450), logo_sub, fill="#4B5563", font=font_logo_sub)
-
-    font_main_title = get_font(size=36, bold=True, font_path=bold_font_path)
-    main_title = "Lá Số Tử Vi"
-    tw_mt = draw.textlength(main_title, font=font_main_title)
-    draw.text((600 - tw_mt / 2, 500), main_title, fill="#9F1239", font=font_main_title)
-
-    font_kv_k = get_font(size=13, bold=True, font_path=bold_font_path)
-    font_kv_v = get_font(size=13, bold=False, font_path=reg_font_path)
-
+    title = "LÁ SỐ TỬ VI"
     name_val = thien_ban.get("ten", "Khách")
-    gioi_tinh = thien_ban.get("gioi_tinh", "Nam")
+    title_h = _px(52)
+    name_h = _px(34)
+    n_rows = 5
+    row_h = _px(50)
+    data_h = n_rows * row_h
+    dragon_sz = _px(92)
+    blocks = title_h + dragon_sz + name_h + data_h
+    # Equal top pad + 3 mid gaps + bottom pad — fill the 2×2 square
+    free = max(_px(50), (cy1 - cy0) - blocks)
+    gap = free / 5
+
+    title_y = cy0 + gap
+    icon_y = int(title_y + title_h + gap)
+    name_y = int(icon_y + dragon_sz + gap)
+    data_y = int(name_y + name_h + gap)
+
+    tw = draw.textlength(title, font=font_title)
+    draw.text((ox + grid / 2 - tw / 2, title_y), title, fill=style.title, font=font_title)
+
+    bagua = _load_asset("bagua.png")
+    if bagua:
+        bagua = bagua.resize((dragon_sz, dragon_sz), Image.Resampling.LANCZOS)
+        _paste_rgba(img, bagua, (ox + style.cell * 2 - dragon_sz // 2, icon_y))
+
+    dl = _load_asset("dragon_left.png")
+    dr = _load_asset("dragon_right.png")
+    if dl:
+        _paste_rgba(img, _fit_square(dl, dragon_sz, pad=_px(4)), (cx0 + _px(18), icon_y))
+    if dr:
+        _paste_rgba(img, _fit_square(dr, dragon_sz, pad=_px(4)), (cx1 - _px(18) - dragon_sz, icon_y))
+
+    tw = draw.textlength(name_val, font=font_name)
+    draw.text((ox + grid / 2 - tw / 2, name_y), name_val, fill=style.seal_red, font=font_name)
+
     ngay_duong = thien_ban.get("ngay_duong", "")
     ngay_am = thien_ban.get("ngay_am", "")
-
-    can_nam = thien_ban.get("can_nam", "")
-    chi_nam = thien_ban.get("chi_nam", "")
-    nam_am_str = f"{can_nam} {chi_nam}"
-
-    can_thang = thien_ban.get("can_thang", "")
-    chi_thang = thien_ban.get("chi_thang", "")
-    thang_am_str = f"{can_thang} {chi_thang}"
-
-    can_ngay = thien_ban.get("can_ngay", "")
-    chi_ngay = thien_ban.get("chi_ngay", "")
-    ngay_am_str = f"{can_ngay} {chi_ngay}"
-
     gio_sinh = thien_ban.get("gio_sinh", "")
-    chi_gio = thien_ban.get("chi_gio_sinh", "")
     can_gio = thien_ban.get("can_gio_sinh", "")
-    gio_sinh_str = f"{gio_sinh} ({can_gio} {chi_gio})"
-
-    am_duong_nam = thien_ban.get("am_duong_nam_sinh", "")
+    chi_gio = thien_ban.get("chi_gio_sinh", "")
+    gio_str = gio_sinh or f"{can_gio} {chi_gio}".strip()
+    nam_am = f"{thien_ban.get('can_nam', '')} {thien_ban.get('chi_nam', '')}".strip()
+    am_duong = f"{thien_ban.get('am_duong_nam_sinh', '')} {thien_ban.get('gioi_tinh', '')}".strip()
     ban_menh = thien_ban.get("ban_menh", "")
-    hanh_cuc = thien_ban.get("hanh_cuc", "")
-    ten_cuc = thien_ban.get("ten_cuc", "")
+    cuc = f"{thien_ban.get('ten_cuc', '')} ({thien_ban.get('hanh_cuc', '')})".strip()
+    year_str = str(current_year) if current_year else "N/A"
 
-    menh_chu = thien_ban.get("menh_chu", "")
-    than_chu = thien_ban.get("than_chu", "")
-    lai_nhan = thien_ban.get("lai_nhan_cung", "")
+    left = [
+        ("Dương lịch", ngay_duong),
+        ("Âm lịch", ngay_am),
+        ("Giờ sinh", gio_str),
+        ("Năm sinh", nam_am),
+        ("Âm dương", am_duong),
+    ]
+    right = [
+        ("Bản mệnh", ban_menh),
+        ("Hành cục", cuc),
+        ("Chủ mệnh", thien_ban.get("menh_chu", "")),
+        ("Chủ thân", thien_ban.get("than_chu", "")),
+        ("Năm xem", year_str),
+    ]
 
-    current_year_str = ""
-    if current_year:
-        current_year_str = f"{current_year}"
-        if "target_period" in chart_data:
-            tp = chart_data["target_period"]
-            current_year_str += f" ({tp.get('current_year_can_chi', '')}), {tp.get('current_age', '')} tuổi"
+    left_x = cx0 + _px(18)
+    right_edge = cx1 - _px(16)
+    lab_gap = _px(10)
+    left_lab_w = max(draw.textlength(k, font=font_k) for k, _ in left)
+    right_lab_w = max(draw.textlength(k, font=font_k) for k, _ in right)
+    left_val_w = max((draw.textlength(str(v), font=font_v) for _, v in left), default=0)
+    right_val_w = max((draw.textlength(str(v), font=font_v) for _, v in right), default=0)
+    # Pack right column against the inner gold so long values (Hành cục) stay inside
+    right_block = right_lab_w + lab_gap + right_val_w
+    right_x = right_edge - right_block
+    left_end = left_x + left_lab_w + lab_gap + left_val_w
+    gutter = _px(16)
+    if right_x < left_end + gutter:
+        right_x = left_end + gutter
+    ly = data_y
+    for k, v in left:
+        draw.text((left_x, ly), k, fill=style.ink_muted, font=font_k)
+        draw.text((left_x + left_lab_w + lab_gap, ly), str(v), fill=style.ink, font=font_v)
+        ly += row_h
+
+    ry = data_y
+    for k, v in right:
+        draw.text((right_x, ry), k, fill=style.ink_muted, font=font_k)
+        draw.text((right_x + right_lab_w + lab_gap, ry), str(v), fill=style.ink, font=font_v)
+        ry += row_h
+
+    seal = _load_asset("seal_red.png")
+    if seal:
+        seal = seal.resize((_px(72), _px(72)), Image.Resampling.LANCZOS)
+        _paste_rgba(img, seal, (cx1 - _px(90), cy1 - _px(95)))
     else:
-        current_year_str = "N/A"
+        draw.rectangle([cx1 - _px(90), cy1 - _px(95), cx1 - _px(20), cy1 - _px(25)], outline=style.seal_red, width=_px(2))
 
-    left_items = [
-        ("Họ tên:", name_val),
-        ("Dương lịch:", ngay_duong),
-        ("Âm lịch:", ngay_am),
-        ("Giờ sinh:", gio_sinh_str),
-        ("Năm sinh:", nam_am_str),
-        ("Tháng sinh:", thang_am_str),
-        ("Ngày sinh:", ngay_am_str),
+    # --- Footer ---
+    fy0 = oy + grid
+    draw.rectangle([ox, fy0, ox + grid, fy0 + style.footer], fill=style.navy)
+    draw.line([(ox, fy0), (ox + grid, fy0)], fill=style.gold, width=_px(2))
+
+    font_ft = get_font(_px(13), True, bold_path)
+    chi_stride = _px(72)
+    for i, chi in enumerate(CHI_ORDER):
+        key = CHI_ASSET_KEYS[chi]
+        tile = _load_asset(f"chi_{key}.png")
+        ix = ox + _px(8) + i * chi_stride
+        if tile:
+            tile = _fit_square(tile, _px(62), pad=_px(3))
+            _paste_rgba(img, tile, (ix, fy0 + _px(8)))
+        tw = draw.textlength(chi.upper(), font=font_ft)
+        draw.text((ix + _px(31) - tw / 2, fy0 + _px(74)), chi.upper(), fill=style.gold_bright, font=font_ft)
+
+    # Legend: ngũ hành colors + Miếu/Vượng/Đắc/Bình/Hãm
+    box_x0 = ox + grid - _px(340)
+    box_y0, box_y1 = fy0 + _px(8), fy0 + style.footer - _px(8)
+    box_x1 = ox + grid - _px(8)
+    draw.rectangle([box_x0, box_y0, box_x1, box_y1], outline=style.gold, width=max(1, _px(1)))
+    font_leg = get_font(_px(13), True, bold_path)
+    elements = [
+        ("Kim", ELEMENT_COLORS["Kim"]),
+        ("Mộc", ELEMENT_COLORS["Mộc"]),
+        ("Thủy", ELEMENT_COLORS["Thủy"]),
+        ("Hỏa", ELEMENT_COLORS["Hỏa"]),
+        ("Thổ", ELEMENT_COLORS["Thổ"]),
     ]
+    ex, ey = box_x0 + _px(8), box_y0 + _px(14)
+    cap = draw.textbbox((0, 0), "H", font=font_leg)
+    cap_mid = (cap[1] + cap[3]) / 2
+    chip = _px(10)
+    for name, colr in elements:
+        cy = ey + cap_mid - _px(1)
+        draw.rounded_rectangle(
+            [ex, cy - chip / 2, ex + chip, cy + chip / 2],
+            radius=max(1, _px(1)),
+            fill=colr,
+            outline="#F5E6C8",
+            width=max(1, _px(1)),
+        )
+        draw.text((ex + chip + _px(5), ey), name, fill="#F5E6C8", font=font_leg)
+        ex += _px(64)
+    statuses = [("M", "Miếu"), ("V", "Vượng"), ("Đ", "Đắc"), ("B", "Bình"), ("H", "Hãm")]
+    sx, sy = box_x0 + _px(8), box_y0 + _px(50)
+    for ab, full in statuses:
+        draw.text((sx, sy), ab, fill=style.gold_bright, font=font_leg)
+        ab_w = draw.textlength(ab, font=font_leg)
+        colon_x = _legend_colon(draw, sx + ab_w + _px(3), sy + cap_mid, style.gold_bright)
+        draw.text((colon_x + _px(3), sy), full, fill="#F5E6C8", font=font_leg)
+        item_w = colon_x + _px(3) - sx + draw.textlength(full, font=font_leg)
+        sx += item_w + (_px(18) if ab == "V" else _px(14))
 
-    right_items = [
-        ("Âm dương:", f"{am_duong_nam} {gioi_tinh}"),
-        ("Bản mệnh:", ban_menh),
-        ("Hành cục:", f"{ten_cuc} ({hanh_cuc})"),
-        ("Chủ mệnh:", menh_chu),
-        ("Chủ thân:", than_chu),
-        ("Lai nhân cung:", lai_nhan),
-        ("Năm xem:", current_year_str),
-    ]
-
-    ly = 590
-    for k, v in left_items:
-        draw.text((330, ly), k, fill="#374151", font=font_kv_k)
-        draw.text((420, ly), v, fill="#111827", font=font_kv_v)
-        ly += 30
-
-    ry = 590
-    for k, v in right_items:
-        draw.text((610, ry), k, fill="#374151", font=font_kv_k)
-        draw.text((710, ry), v, fill="#111827", font=font_kv_v)
-        ry += 30
-
-    # Draw stamp emblem logo
-    draw.rectangle([780, 1080, 850, 1150], outline="#DC2626", width=2)
-    font_seal = get_font(size=12, bold=True, font_path=bold_font_path)
-    draw.text((795, 1092), "TỬ", fill="#DC2626", font=font_seal)
-    draw.text((795, 1108), "VI", fill="#DC2626", font=font_seal)
-    draw.text((795, 1124), "MCP", fill="#DC2626", font=font_seal)
-
-    # 9. Legend Footer Rendering (1200x1600 px to 1200x1697 px)
-    draw.rectangle([0, 1600, 1200, 1697], fill="#F3F4F6")
-    draw.line([(0, 1600), (1200, 1600)], fill="#D1D5DB", width=2)
-
-    lx = 30
-    for el_name, el_col in ELEMENT_COLORS.items():
-        draw.rectangle([lx, 1635, lx + 20, 1655], fill=el_col)
-        draw.text((lx + 28, 1637), el_name, fill="#1F2937", font=font_bold)
-        lx += 120
-
-    draw.text((620, 1637), "Sao Đắc Tính:  M: Miếu địa  |  V: Vượng địa  |  Đ: Đắc địa  |  B: Bình hòa  |  H: Hãm địa", fill="#374151", font=font_regular)
-
-    powered_text = "Powered by nmhaaa3218/TuViMCP"
-    tw_pw = draw.textlength(powered_text, font=font_bold)
-    draw.text((1170 - tw_pw, 1665), powered_text, fill="#6B7280", font=font_bold)
-
-    # 10. Save to a temporary file
-    temp_dir = tempfile.gettempdir()
-    output_path = os.path.join(temp_dir, f"tuvi_chart_{name_val.replace(' ', '_')}.png")
-    img.save(output_path, "PNG")
-
-    return output_path
+    safe = str(name_val).replace(" ", "_")
+    out = os.path.join(tempfile.gettempdir(), f"tuvi_chart_{safe}.png")
+    flat = Image.new("RGBA", img.size, (*parchment_deep_rgb, 255))
+    Image.alpha_composite(flat, img).convert("RGB").save(
+        out, "PNG", dpi=(144, 144), compress_level=4
+    )
+    return out

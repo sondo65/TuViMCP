@@ -505,10 +505,13 @@ class Horoscope:
 
         :param chart: Pre-calculated chart result or dict. Defaults to ``self.chart().to_dict()``.
         :param year: Transit target Lunar year for display in chart header.
+            Defaults to the current system year (avoids Năm xem N/A).
         :param font_path: Path to a custom TrueType (.ttf) regular font file. Defaults to bundled Roboto font.
         :param font_bold_path: Path to a custom TrueType (.ttf) bold font file.
         :return: Path to rendered PNG file in system temporary directory.
         """
+        if year is None:
+            year = datetime.now().year
         if chart is None:
             chart = self.chart().to_dict()
         elif isinstance(chart, HoroscopeResult):

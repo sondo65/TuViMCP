@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Traditional lá số PNG style (default):** `generate_laso_image` now renders a minh-họa-like chart — navy/gold frame, parchment fills, classical ngũ hành colors, per-cung zodiac icons, center bagua/dragons/seal, and a navy footer with 12 chi icons + Âm lịch block. Modern gray/Tailwind palette removed as default.
+- Bundled procedural ornament assets under `tuvi_mcp/_assets/laso/` (corners, chi icons, bagua, dragons, seal). Assets are package-generated decorations, not third-party screenshot crops.
+
 ## [0.4.1] - 2026-08-03
 
 ### Added

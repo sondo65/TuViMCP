@@ -6,6 +6,8 @@ Tests for the public library API (Phase 1 refactor).
 """
 
 import os
+from datetime import datetime
+from unittest.mock import patch
 
 # Create a temp DB before any database import (in case tests touch storage)
 import tempfile
@@ -183,6 +185,23 @@ def test_horoscope_render_chart(tmp_path):
     assert os.path.exists(path)
     assert path.endswith(".png")
     os.remove(path)
+
+
+def test_render_chart_defaults_year_to_system_year():
+    """Omitting year still paints Năm xem as datetime.now().year, not N/A."""
+    captured = {}
+
+    def spy(chart, current_year=None, font_path=None, font_bold_path=None):
+        captured["current_year"] = current_year
+        return "/tmp/fake-laso.png"
+
+    h = Horoscope.from_birth(name="Test", year=2003, month=8, day=21, hour="15:30", gender="Nam")
+    chart = h.chart()
+    with patch("tuvi_mcp.horoscope.generate_laso_image", spy):
+        h.render_chart(chart)
+
+    assert captured["current_year"] == datetime.now().year
+    assert captured["current_year"] is not None
 
 
 def test_calendar_module_exports():

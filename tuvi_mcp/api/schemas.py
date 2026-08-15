@@ -17,3 +17,4 @@ class HoroscopeGenerateRequest(BaseModel):
     gender_val: str = "Nam"
     is_solar: bool = True
     timezone: int | float | str | None = 7
+    current_year: int | None = Field(default=None, ge=1800, le=2100)

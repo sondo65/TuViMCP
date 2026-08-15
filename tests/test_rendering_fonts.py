@@ -101,3 +101,81 @@ def test_render_chart_long_vietnamese_name_and_transit():
     img_path = h.render_chart(year=2026)
     assert os.path.exists(img_path)
     assert os.path.getsize(img_path) > 0
+
+
+def test_traditional_palette_smoke():
+    """Rendered PNG uses traditional navy/parchment palette (not modern gray grid)."""
+    from PIL import Image
+
+    from tuvi_mcp._rendering import ELEMENT_COLORS, STYLE, _canvas_size, _resolve_style
+
+    assert ELEMENT_COLORS["Mộc"] != "#059669"
+    assert ELEMENT_COLORS["Thủy"] != "#2563EB"
+    assert STYLE.navy == "#1A2744"
+
+    h = Horoscope.from_birth(
+        name="Nguyễn Văn An",
+        day=15,
+        month=5,
+        year=1990,
+        hour=9,
+        gender="Nam",
+    )
+    img_path = h.render_chart(year=2024)
+    assert os.path.exists(img_path)
+    assert os.path.getsize(img_path) > 50_000
+
+    with Image.open(img_path) as im:
+        expected_w, expected_h = _canvas_size()
+        assert im.size == (expected_w, expected_h)
+        rgb = im.convert("RGB")
+
+        # Navy outer frame along left edge (mid-height; skip gold corner tiles)
+        border_px = rgb.getpixel((1, expected_h // 2))
+        assert border_px[0] < 40 and border_px[2] > 50
+
+        s = _resolve_style(STYLE)
+        pad, cell = s.pad, s.cell
+        center_px = rgb.getpixel((pad + cell + cell // 2, pad + cell + 160 * STYLE.scale))
+        assert center_px[0] > 180 and center_px[1] > 170
+        assert center_px != (255, 255, 255)
+
+        # Below chi names, away from corner filigree and the legend box
+        footer_px = rgb.getpixel((pad + 200 * STYLE.scale, pad + 4 * cell + s.footer - 12 * STYLE.scale))
+        assert footer_px[0] < 80 and footer_px[2] >= footer_px[0]
+
+
+def test_chi_icon_is_circular_without_square_frame():
+    """Zodiac tiles crop to the round medallion; square gold card frame is gone."""
+    from tuvi_mcp._rendering import _chi_icon, _load_asset
+
+    _load_asset.cache_clear()
+    icon = _chi_icon(7, "Nhâm Ngọ", size=40)
+    assert icon is not None
+    assert icon.size == (40, 40)
+    px = icon.load()
+    for x, y in ((0, 0), (39, 0), (0, 39), (39, 39)):
+        assert px[x, y][3] < 40, f"corner {(x, y)} still opaque: {px[x, y]}"
+    assert px[20, 20][3] > 80
+    loaded = _load_asset("chi_ngo.png")
+    assert loaded is not None
+    # Occupancy crop must keep the full ~104px medallion, not a 80px shaved disk.
+    assert loaded.size[0] >= 95 and loaded.size[1] >= 95
+    bbox = loaded.getbbox()
+    assert bbox is not None
+    assert bbox[2] - bbox[0] >= 90 and bbox[3] - bbox[1] >= 90
+
+
+def test_center_dragons_have_no_square_card_frame():
+    """Center dragon tiles drop the Stitch gold square; corners stay transparent."""
+    from tuvi_mcp._rendering import _load_asset
+
+    _load_asset.cache_clear()
+    for name in ("dragon_left.png", "dragon_right.png"):
+        im = _load_asset(name)
+        assert im is not None
+        w, h = im.size
+        for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+            assert im.getpixel((x, y))[3] < 40, f"{name} corner {(x, y)} still opaque"
+        top = sum(1 for x in range(w) if im.getpixel((x, 0))[3] > 80)
+        assert top < w * 0.25, f"{name} still has a gold bar along the top"

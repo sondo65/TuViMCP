@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 
@@ -46,9 +48,9 @@ def post_generate(body: HoroscopeGenerateRequest) -> dict:
             timezone=tz,
         )
         chart = horoscope.chart()
-        
-        # Render chart as PNG
-        temp_png_path = horoscope.render_chart(chart)
+
+        view_year = body.current_year if body.current_year is not None else datetime.now().year
+        temp_png_path = horoscope.render_chart(chart, year=view_year)
         
         # Save PNG to charts directory and get UUID
         chart_id = save_chart_png(temp_png_path)
