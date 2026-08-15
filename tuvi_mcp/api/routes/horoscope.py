@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 from fastapi import APIRouter
+from fastapi.responses import FileResponse
 
 from tuvi_mcp import Horoscope
 from tuvi_mcp._input import coerce_timezone, validate_birth_parameters
+from tuvi_mcp.api.chart_images import resolve_chart_path
 from tuvi_mcp.api.errors import raise_from_engine_error, raise_from_value_error, raise_http_error
 from tuvi_mcp.api.schemas import HoroscopeGenerateRequest
 
@@ -52,3 +54,21 @@ def post_generate(body: HoroscopeGenerateRequest) -> dict:
             detail=str(exc),
         )
     return chart
+
+
+@router.get("/images/{chart_id}.png")
+def get_chart_image(chart_id: str) -> FileResponse:
+    """Serve PNG chart image by chart ID."""
+    chart_path = resolve_chart_path(chart_id)
+    if chart_path is None:
+        raise_http_error(
+            status_code=404,
+            code="CHART_IMAGE_NOT_FOUND",
+            detail=f"Chart image not found: {chart_id}",
+        )
+    
+    return FileResponse(
+        path=str(chart_path),
+        media_type="image/png",
+        filename=f"{chart_id}.png"
+    )

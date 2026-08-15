@@ -13,6 +13,7 @@ STABLE_CODES = frozenset(
         "INVALID_TIMEZONE",
         "INVALID_INPUT",
         "HOROSCOPE_ENGINE_ERROR",
+        "CHART_IMAGE_NOT_FOUND",
     }
 )
 
