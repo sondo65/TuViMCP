@@ -28,7 +28,9 @@ def post_generate(body: HoroscopeGenerateRequest):
     try:
         locale = normalize_locale(body.locale)
     except ValueError:
-        # Unwrapped D-06 envelope (same as RequestValidationError), not HTTPException.detail.
+        # D-06 unwrapped {"error":...} like RequestValidationError. Do not use
+        # raise_http_error here: FastAPI would wrap it as {"detail":{"error":...}}
+        # (404 CHART_IMAGE_NOT_FOUND still uses that wrapped shape).
         return JSONResponse(
             status_code=400,
             content={

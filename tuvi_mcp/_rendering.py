@@ -636,11 +636,12 @@ def _legend_status_items(draw, font, start_x=0.0, locale="vi"):
     sx = float(start_x)
     items = []
     for ab, full in LEGEND_STATUSES:
+        ab_disp = t(locale, ab, section="brightness_abbrev")
         full_disp = t(locale, full, section="stars")
-        ab_w = draw.textlength(ab, font=font)
+        ab_w = draw.textlength(ab_disp, font=font)
         colon_x = sx + ab_w + _px(3) + _px(6)
         item_w = colon_x + _px(3) - sx + draw.textlength(full_disp, font=font)
-        items.append((ab, full_disp, sx, item_w))
+        items.append((ab_disp, full_disp, sx, item_w))
         sx += item_w + (_px(18) if ab == "V" else _px(14))
     return items
 
