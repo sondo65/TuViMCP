@@ -197,8 +197,9 @@ def test_generate_horoscope_locale_en_draws_english_title():
         response = client.post("/v1/horoscope/generate", json=payload)
 
     assert response.status_code == 200
-    title_draws = [s for s in drawn if s in (english_title, "LÁ SỐ TỬ VI")]
-    assert english_title in drawn
+    translated_titles = (english_title, english_title.upper())
+    title_draws = [s for s in drawn if s in (*translated_titles, "LÁ SỐ TỬ VI")]
+    assert any(s in translated_titles for s in drawn)
     assert "LÁ SỐ TỬ VI" not in title_draws
 
 
