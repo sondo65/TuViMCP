@@ -18,6 +18,8 @@ from typing import Optional
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
+from tuvi_mcp.i18n import t
+
 
 @dataclass(frozen=True)
 class LasoStyle:
@@ -141,6 +143,36 @@ TRANG_SINH_SET = {
     "Thai",
     "Dưỡng",
 }
+
+_LATIN_CASE_LOCALES = frozenset({"vi", "en", "ms"})
+
+
+def _display_case(locale: str, text: str) -> str:
+    """Uppercase after lookup only for Latin script locales (never CJK)."""
+    if locale in _LATIN_CASE_LOCALES:
+        return text.upper()
+    return text
+
+
+def _t_tokens(locale: str, text: str, *sections: str) -> str:
+    """Split whitespace, look up each token, rejoin."""
+    if not text:
+        return text
+    out: list[str] = []
+    for part in str(text).split():
+        translated = part
+        if sections:
+            for sect in sections:
+                candidate = t(locale, part, section=sect)
+                if candidate != part:
+                    translated = candidate
+                    break
+            else:
+                translated = t(locale, part)
+        else:
+            translated = t(locale, part)
+        out.append(translated)
+    return " ".join(out)
 
 
 def _px(n: float, scale: int | None = None) -> int:
@@ -496,7 +528,7 @@ def _paste_rgba_outside(base: Image.Image, overlay: Optional[Image.Image], xy: t
     base.paste(composited)
 
 
-def get_font(size=12, bold=False, font_path=None):
+def get_font(size=12, bold=False, font_path=None, locale="vi"):
     if font_path and isinstance(font_path, (str, os.PathLike)):
         try:
             if os.path.exists(font_path):
@@ -599,28 +631,29 @@ def _legend_colon(draw, x, mid_y, color="#E0C35A", scale: int | None = None):
     return x + _px(6, sc)
 
 
-def _legend_status_items(draw, font, start_x=0.0):
+def _legend_status_items(draw, font, start_x=0.0, locale="vi"):
     """(abbrev, full, x, item_w) for M/V/Đ/B/H — same metrics as the footer paint loop."""
     sx = float(start_x)
     items = []
     for ab, full in LEGEND_STATUSES:
+        full_disp = t(locale, full, section="stars")
         ab_w = draw.textlength(ab, font=font)
         colon_x = sx + ab_w + _px(3) + _px(6)
-        item_w = colon_x + _px(3) - sx + draw.textlength(full, font=font)
-        items.append((ab, full, sx, item_w))
+        item_w = colon_x + _px(3) - sx + draw.textlength(full_disp, font=font)
+        items.append((ab, full_disp, sx, item_w))
         sx += item_w + (_px(18) if ab == "V" else _px(14))
     return items
 
 
-def _legend_status_content_width(draw, font) -> float:
-    items = _legend_status_items(draw, font)
+def _legend_status_content_width(draw, font, locale="vi") -> float:
+    items = _legend_status_items(draw, font, locale=locale)
     _ab, _full, sx, item_w = items[-1]
     return sx + item_w - items[0][2]
 
 
-def _legend_box(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int):
+def _legend_box(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int, locale="vi"):
     """Gold legend rect sized so Hãm keeps inner padding; never overlap the Hợi chi tile."""
-    content_w = _legend_status_content_width(draw, font)
+    content_w = _legend_status_content_width(draw, font, locale=locale)
     pad = _px(10)
     box_x1 = ox + grid - _px(8)
     box_x0 = int(round(box_x1 - pad * 2 - content_w))
@@ -726,8 +759,8 @@ def _cung_badge_insets(
     return insets
 
 
-def draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=None, style: LasoStyle = STYLE):
-    font = get_font(_px(16), True)
+def draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=None, style: LasoStyle = STYLE, locale="vi"):
+    font = get_font(_px(16), True, locale=locale)
     badge_w, badge_h = _px(76), _px(28)
     cw, ch = _canvas_size(style)
     by_id = {c["cung_so"]: c for c in dia_ban}
@@ -737,9 +770,9 @@ def draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=None, style: LasoStyle = ST
             continue
         labels = []
         if c1.get("tuan_trung") and c2.get("tuan_trung"):
-            labels.append("Tuần")
+            labels.append(t(locale, "Tuần", section="ui"))
         if c1.get("triet_lo") and c2.get("triet_lo"):
-            labels.append("Triệt")
+            labels.append(t(locale, "Triệt", section="ui"))
         if not labels:
             continue
         bx, by, edge = _tuan_triet_anchor(c1_id, c2_id, ox, oy, badge_w, badge_h, style)
@@ -775,6 +808,7 @@ def generate_laso_image(
     current_year: int = None,
     font_path: str = None,
     font_bold_path: str = None,
+    locale: str = "vi",
 ) -> str:
     """Render traditional square-ish lá số PNG (Stitch minh-họa style)."""
     style = _resolve_style(STYLE)
@@ -870,12 +904,12 @@ def generate_laso_image(
     draw.rectangle([cx0, cy0, cx1, cy1], outline=style.gold, width=_px(3))
 
     bold_path = font_bold_path or font_path
-    font_sm = get_font(_px(15), False, font_path)
-    font_reg = get_font(_px(16), False, font_path)
-    font_bold = get_font(_px(16), True, bold_path)
-    font_palace = get_font(_px(22), True, bold_path)
-    font_star = get_font(_px(18), True, bold_path)
-    font_chi = get_font(_px(17), True, bold_path)
+    font_sm = get_font(_px(15), False, font_path, locale=locale)
+    font_reg = get_font(_px(16), False, font_path, locale=locale)
+    font_bold = get_font(_px(16), True, bold_path, locale=locale)
+    font_palace = get_font(_px(22), True, bold_path, locale=locale)
+    font_star = get_font(_px(18), True, bold_path, locale=locale)
+    font_chi = get_font(_px(17), True, bold_path, locale=locale)
     badge_w, badge_h = _px(76), _px(28)
     badge_rects = _tuan_triet_badge_rects(dia_ban, ox, oy, badge_w, badge_h, style)
     badge_pad_v = badge_h // 2 + _px(8)
@@ -895,7 +929,7 @@ def generate_laso_image(
         chi_name = CUNG_CHI.get(c_id, "")
         if " " in can_chi:
             can = can_chi.split(" ", 1)[0]
-            can_abbr = (can[:1] + ".") if can else ""
+            can_abbr = t(locale, can, section="can_abbr") if can else ""
         else:
             can_abbr = ""
 
@@ -912,7 +946,7 @@ def generate_laso_image(
         chi_pad = _px(20) if is_corner and col == 3 else _px(8)
         hy0 = y0 + _px(4) + top_pad
         draw.text((idx_x, hy0), str(c_id), fill=style.ink_muted, font=font_sm)
-        chi_label = f"{can_abbr}{chi_name}".upper()
+        chi_label = _display_case(locale, f"{can_abbr}{t(locale, chi_name, section='chi') if chi_name else ''}")
         twc = draw.textlength(chi_label, font=font_chi)
         draw.text((x1 - chi_pad - twc, hy0), chi_label, fill=style.ink, font=font_chi)
         if dai_str:
@@ -933,9 +967,10 @@ def generate_laso_image(
         if icon:
             _paste_rgba(img, icon, (icon_x, icon_y))
 
-        palace = cung.get("cung_chu", "").upper()
+        palace_key = cung.get("cung_chu", "")
+        palace = _display_case(locale, t(locale, palace_key, section="palaces") if palace_key else "")
         if cung.get("cung_than"):
-            palace += " · THÂN"
+            palace += t(locale, " · THÂN", section="ui")
         twp = draw.textlength(palace, font=font_palace)
         title_y = icon_y + icon_sz + (_px(10) if is_corner else _px(8))
         draw.text((x0 + style.cell / 2 - twp / 2, title_y), palace, fill=style.seal_red, font=font_palace)
@@ -945,21 +980,25 @@ def generate_laso_image(
         for s in cung.get("sao", []):
             name = s.get("name", "")
             if name in TRANG_SINH_SET:
-                trang = name
+                trang = t(locale, name, section="stars")
                 continue
             el = {"M": "Mộc", "H": "Hỏa", "O": "Thổ", "K": "Kim", "T": "Thủy"}.get(s.get("element", ""), s.get("element", ""))
             color = ELEMENT_COLORS.get(el, style.ink)
-            attr = ATTR_SUFFIX_MAP.get(s.get("attribute", ""), "")
+            raw_attr = s.get("attribute", "") or ""
+            attr = t(locale, raw_attr, section="brightness_abbrev") if raw_attr else ""
+            if raw_attr and attr == raw_attr:
+                attr = ATTR_SUFFIX_MAP.get(raw_attr, "")
             suffix = f" ({attr})" if attr else ""
             sid, stype = s.get("id"), s.get("type", 2)
             yy = s.get("yin_yang", 0)
             prefix = "+" if yy == 1 else "-" if yy == -1 else ""
+            drawn_name = t(locale, name, section="stars") if name else ""
             if sid in CHINH_TINH_IDS:
-                chinh.append((f"{prefix}{name.upper()}{suffix}", color))
+                chinh.append((f"{prefix}{_display_case(locale, drawn_name)}{suffix}", color))
             elif stype < 10:
-                cat.append((f"{name}{suffix}", color))
+                cat.append((f"{drawn_name}{suffix}", color))
             else:
-                sat.append((f"{name}{suffix}", color))
+                sat.append((f"{drawn_name}{suffix}", color))
 
         # Stack: title → chính tinh → two auxiliary columns (serif needs real leading)
         n_chinh = min(2, len(chinh))
@@ -994,25 +1033,30 @@ def generate_laso_image(
             draw.text((sat_x, y_right), nm, fill=colr, font=font_bold)
             y_right += aux_lh
 
-        thang = f"Tháng {month_idx}"
+        pattern = t(locale, "month_pattern", section="ui")
+        try:
+            thang = pattern.format(n=month_idx)
+        except (KeyError, IndexError, ValueError):
+            thang = pattern.replace("{n}", str(month_idx))
         draw.text((x0 + _px(8), footer_y), thang, fill=style.ink_muted, font=font_sm)
         if trang:
             tw = draw.textlength(trang, font=font_reg)
             draw.text((x0 + style.cell / 2 - tw / 2, footer_y), trang, fill=style.ink, font=font_reg)
         if hanh:
-            tw = draw.textlength(hanh, font=font_sm)
-            draw.text((x1 - _px(12) - tw, footer_y), hanh, fill=style.ink_muted, font=font_sm)
+            hanh_disp = t(locale, hanh, section="elements")
+            tw = draw.textlength(hanh_disp, font=font_sm)
+            draw.text((x1 - _px(12) - tw, footer_y), hanh_disp, fill=style.ink_muted, font=font_sm)
 
-    draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=font_bold, style=style)
+    draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=font_bold, style=style, locale=locale)
 
     # --- Center Thiên bàn: even vertical rhythm across the 2×2 square ---
-    font_title = get_font(_px(48), True, bold_path)
-    font_name = get_font(_px(28), True, bold_path)
-    font_k = get_font(_px(20), False, font_path)
-    font_v = get_font(_px(22), True, bold_path)
+    font_title = get_font(_px(48), True, bold_path, locale=locale)
+    font_name = get_font(_px(28), True, bold_path, locale=locale)
+    font_k = get_font(_px(20), False, font_path, locale=locale)
+    font_v = get_font(_px(22), True, bold_path, locale=locale)
 
-    title = "LÁ SỐ TỬ VI"
-    name_val = thien_ban.get("ten", "Khách")
+    title = _display_case(locale, t(locale, "LÁ SỐ TỬ VI", section="ui"))
+    name_val = thien_ban.get("ten") or t(locale, "Khách", section="ui")
     title_h = _px(52)
     name_h = _px(34)
     n_rows = 5
@@ -1053,25 +1097,31 @@ def generate_laso_image(
     can_gio = thien_ban.get("can_gio_sinh", "")
     chi_gio = thien_ban.get("chi_gio_sinh", "")
     gio_str = gio_sinh or f"{can_gio} {chi_gio}".strip()
+    gio_str = _t_tokens(locale, gio_str, "can", "chi")
     nam_am = f"{thien_ban.get('can_nam', '')} {thien_ban.get('chi_nam', '')}".strip()
+    nam_am = _t_tokens(locale, nam_am, "can", "chi")
     am_duong = f"{thien_ban.get('am_duong_nam_sinh', '')} {thien_ban.get('gioi_tinh', '')}".strip()
-    ban_menh = thien_ban.get("ban_menh", "")
-    cuc = f"{thien_ban.get('ten_cuc', '')} ({thien_ban.get('hanh_cuc', '')})".strip()
-    year_str = str(current_year) if current_year else "N/A"
+    am_duong = _t_tokens(locale, am_duong, "am_duong", "gender")
+    ban_menh = t(locale, thien_ban.get("ban_menh", "") or "", section="stars")
+    ten_cuc = t(locale, thien_ban.get("ten_cuc", "") or "", section="stars")
+    cuc = f"{ten_cuc} ({thien_ban.get('hanh_cuc', '')})".strip()
+    year_str = str(current_year) if current_year else t(locale, "N/A", section="ui")
+    menh_chu = t(locale, thien_ban.get("menh_chu", "") or "", section="stars")
+    than_chu = t(locale, thien_ban.get("than_chu", "") or "", section="stars")
 
     left = [
-        ("Dương lịch", ngay_duong),
-        ("Âm lịch", ngay_am),
-        ("Giờ sinh", gio_str),
-        ("Năm sinh", nam_am),
-        ("Âm dương", am_duong),
+        (t(locale, "Dương lịch", section="ui"), ngay_duong),
+        (t(locale, "Âm lịch", section="ui"), ngay_am),
+        (t(locale, "Giờ sinh", section="ui"), gio_str),
+        (t(locale, "Năm sinh", section="ui"), nam_am),
+        (t(locale, "Âm dương", section="ui"), am_duong),
     ]
     right = [
-        ("Bản mệnh", ban_menh),
-        ("Hành cục", cuc),
-        ("Chủ mệnh", thien_ban.get("menh_chu", "")),
-        ("Chủ thân", thien_ban.get("than_chu", "")),
-        ("Năm xem", year_str),
+        (t(locale, "Bản mệnh", section="ui"), ban_menh),
+        (t(locale, "Hành cục", section="ui"), cuc),
+        (t(locale, "Chủ mệnh", section="ui"), menh_chu),
+        (t(locale, "Chủ thân", section="ui"), than_chu),
+        (t(locale, "Năm xem", section="ui"), year_str),
     ]
 
     left_x = cx0 + _px(18)
@@ -1112,7 +1162,7 @@ def generate_laso_image(
     draw.rectangle([ox, fy0, ox + grid, fy0 + style.footer], fill=style.navy)
     draw.line([(ox, fy0), (ox + grid, fy0)], fill=style.gold, width=_px(2))
 
-    font_ft = get_font(_px(13), True, bold_path)
+    font_ft = get_font(_px(13), True, bold_path, locale=locale)
     chi_stride = _px(72)
     for i, chi in enumerate(CHI_ORDER):
         key = CHI_ASSET_KEYS[chi]
@@ -1121,12 +1171,13 @@ def generate_laso_image(
         if tile:
             tile = _fit_square(tile, _px(62), pad=_px(3))
             _paste_rgba(img, tile, (ix, fy0 + _px(8)))
-        tw = draw.textlength(chi.upper(), font=font_ft)
-        draw.text((ix + _px(31) - tw / 2, fy0 + _px(74)), chi.upper(), fill=style.gold_bright, font=font_ft)
+        chi_disp = _display_case(locale, t(locale, chi, section="chi"))
+        tw = draw.textlength(chi_disp, font=font_ft)
+        draw.text((ix + _px(31) - tw / 2, fy0 + _px(74)), chi_disp, fill=style.gold_bright, font=font_ft)
 
     # Legend: ngũ hành colors + Miếu/Vượng/Đắc/Bình/Hãm (box grows with Noto Serif)
-    font_leg = get_font(_px(13), True, bold_path)
-    box_x0, box_y0, box_x1, box_y1 = _legend_box(draw, font_leg, ox, grid, fy0, style, chi_stride)
+    font_leg = get_font(_px(13), True, bold_path, locale=locale)
+    box_x0, box_y0, box_x1, box_y1 = _legend_box(draw, font_leg, ox, grid, fy0, style, chi_stride, locale=locale)
     draw.rectangle([box_x0, box_y0, box_x1, box_y1], outline=style.gold, width=max(1, _px(1)))
     elements = [
         ("Kim", ELEMENT_COLORS["Kim"]),
@@ -1148,10 +1199,10 @@ def generate_laso_image(
             outline="#F5E6C8",
             width=max(1, _px(1)),
         )
-        draw.text((ex + chip + _px(5), ey), name, fill="#F5E6C8", font=font_leg)
+        draw.text((ex + chip + _px(5), ey), t(locale, name, section="elements"), fill="#F5E6C8", font=font_leg)
         ex += _px(64)
     sy = box_y0 + _px(50)
-    for ab, full, sx, _item_w in _legend_status_items(draw, font_leg, box_x0 + _px(10)):
+    for ab, full, sx, _item_w in _legend_status_items(draw, font_leg, box_x0 + _px(10), locale=locale):
         draw.text((sx, sy), ab, fill=style.gold_bright, font=font_leg)
         ab_w = draw.textlength(ab, font=font_leg)
         colon_x = _legend_colon(draw, sx + ab_w + _px(3), sy + cap_mid, style.gold_bright)

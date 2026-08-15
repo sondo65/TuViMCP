@@ -18,3 +18,4 @@ class HoroscopeGenerateRequest(BaseModel):
     is_solar: bool = True
     timezone: int | float | str | None = 7
     current_year: int | None = Field(default=None, ge=1800, le=2100)
+    locale: str | None = None

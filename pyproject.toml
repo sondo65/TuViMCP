@@ -66,6 +66,7 @@ include = ["tuvi_mcp*"]
 "tuvi_mcp._data" = ["*.json"]
 "tuvi_mcp._fonts" = ["*.ttf", "OFL.txt"]
 "tuvi_mcp._assets" = ["laso/*.png", "laso/*.md"]
+"tuvi_mcp.i18n" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

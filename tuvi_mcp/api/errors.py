@@ -11,6 +11,7 @@ STABLE_CODES = frozenset(
         "INVALID_BIRTH_HOUR",
         "INVALID_GENDER",
         "INVALID_TIMEZONE",
+        "INVALID_LOCALE",
         "INVALID_INPUT",
         "HOROSCOPE_ENGINE_ERROR",
         "CHART_RENDER_ERROR",

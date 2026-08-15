@@ -191,7 +191,7 @@ def test_render_chart_defaults_year_to_system_year():
     """Omitting year still paints Năm xem as datetime.now().year, not N/A."""
     captured = {}
 
-    def spy(chart, current_year=None, font_path=None, font_bold_path=None):
+    def spy(chart, current_year=None, font_path=None, font_bold_path=None, locale=None, **kwargs):
         captured["current_year"] = current_year
         return "/tmp/fake-laso.png"
 

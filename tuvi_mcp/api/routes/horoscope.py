@@ -6,23 +6,41 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from tuvi_mcp import Horoscope
 from tuvi_mcp._input import coerce_timezone, validate_birth_parameters
 from tuvi_mcp.api.chart_images import resolve_chart_path, save_chart_png
 from tuvi_mcp.api.errors import raise_from_engine_error, raise_from_value_error, raise_http_error
 from tuvi_mcp.api.schemas import HoroscopeGenerateRequest
+from tuvi_mcp.i18n import normalize_locale, t
 
 router = APIRouter(prefix="/v1/horoscope", tags=["horoscope"])
 
 
-@router.post("/generate")
-def post_generate(body: HoroscopeGenerateRequest) -> dict:
+@router.post("/generate", response_model=None)
+def post_generate(body: HoroscopeGenerateRequest):
     """Generate a birth chart and return image_url + name."""
     tz, tz_error = coerce_timezone(body.timezone, default=7.0)
     if tz_error is not None:
         raise_from_engine_error(tz_error)
+
+    try:
+        locale = normalize_locale(body.locale)
+    except ValueError:
+        # Unwrapped D-06 envelope (same as RequestValidationError), not HTTPException.detail.
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": {
+                    "code": "INVALID_LOCALE",
+                    "detail": (
+                        f"Unsupported locale: {body.locale!r}. "
+                        "Allowed: vi, en, zh, ko, ja, ms"
+                    ),
+                }
+            },
+        )
 
     validation_error = validate_birth_parameters(
         day=body.day,
@@ -37,8 +55,9 @@ def post_generate(body: HoroscopeGenerateRequest) -> dict:
         raise_from_engine_error(validation_error)
 
     try:
+        display_name = body.name if body.name else t(locale, "Khách", section="ui")
         horoscope = Horoscope.from_birth(
-            name=body.name or "Khách",
+            name=display_name,
             year=body.year,
             month=body.month,
             day=body.day,
@@ -50,17 +69,17 @@ def post_generate(body: HoroscopeGenerateRequest) -> dict:
         chart = horoscope.chart()
 
         view_year = body.current_year if body.current_year is not None else datetime.now().year
-        temp_png_path = horoscope.render_chart(chart, year=view_year)
-        
+        temp_png_path = horoscope.render_chart(chart, year=view_year, locale=locale)
+
         # Save PNG to charts directory and get UUID
         chart_id = save_chart_png(temp_png_path)
-        
+
         # Return relative image URL and name
         image_url = f"/v1/horoscope/images/{chart_id}.png"
-        
+
         return {
             "image_url": image_url,
-            "name": body.name or "Khách"
+            "name": display_name,
         }
     except ValueError as exc:
         raise_from_value_error(exc)

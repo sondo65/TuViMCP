@@ -500,6 +500,7 @@ class Horoscope:
         year: int | None = None,
         font_path: str | None = None,
         font_bold_path: str | None = None,
+        locale: str = "vi",
     ) -> str:
         """Render the chart as a PNG image. Returns the file path.
 
@@ -508,6 +509,7 @@ class Horoscope:
             Defaults to the current system year (avoids Năm xem N/A).
         :param font_path: Path to a custom TrueType (.ttf) regular font file. Defaults to bundled Noto Serif.
         :param font_bold_path: Path to a custom TrueType (.ttf) bold font file.
+        :param locale: Chart vocabulary locale (vi/en/zh/ko/ja/ms). Defaults to vi.
         :return: Path to rendered PNG file in system temporary directory.
         """
         if year is None:
@@ -516,7 +518,13 @@ class Horoscope:
             chart = self.chart().to_dict()
         elif isinstance(chart, HoroscopeResult):
             chart = chart.to_dict()
-        return generate_laso_image(chart, current_year=year, font_path=font_path, font_bold_path=font_bold_path)
+        return generate_laso_image(
+            chart,
+            current_year=year,
+            font_path=font_path,
+            font_bold_path=font_bold_path,
+            locale=locale,
+        )
 
 
 __all__ = [
