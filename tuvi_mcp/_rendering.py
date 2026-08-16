@@ -737,6 +737,13 @@ def dich_cung(cung_start, offset):
 
 
 LEGEND_STATUSES = (("M", "Miếu"), ("V", "Vượng"), ("Đ", "Đắc"), ("B", "Bình"), ("H", "Hãm"))
+LEGEND_ELEMENTS = (
+    ("Kim", ELEMENT_COLORS["Kim"]),
+    ("Mộc", ELEMENT_COLORS["Mộc"]),
+    ("Thủy", ELEMENT_COLORS["Thủy"]),
+    ("Hỏa", ELEMENT_COLORS["Hỏa"]),
+    ("Thổ", ELEMENT_COLORS["Thổ"]),
+)
 
 
 def _legend_colon(draw, x, mid_y, color="#E0C35A", scale: int | None = None):
@@ -748,38 +755,105 @@ def _legend_colon(draw, x, mid_y, color="#E0C35A", scale: int | None = None):
     return x + _px(6, sc)
 
 
-def _legend_status_items(draw, font, start_x=0.0, locale="vi"):
+def _legend_status_core_w(draw, font, ab_disp: str, full_disp: str) -> float:
+    ab_w = draw.textlength(ab_disp, font=font)
+    return ab_w + _px(3) + _px(6) + _px(3) + draw.textlength(full_disp, font=font)
+
+
+def _legend_default_status_gap(ab: str) -> int:
+    return _px(18) if ab == "V" else _px(14)
+
+
+def _legend_status_items(draw, font, start_x=0.0, locale="vi", gap=None):
     """(abbrev, full, x, item_w) for M/V/Đ/B/H — same metrics as the footer paint loop."""
     sx = float(start_x)
     items = []
-    for ab, full in LEGEND_STATUSES:
+    n = len(LEGEND_STATUSES)
+    for i, (ab, full) in enumerate(LEGEND_STATUSES):
         ab_disp = t(locale, ab, section="brightness_abbrev")
         full_disp = t(locale, full, section="stars")
-        ab_w = draw.textlength(ab_disp, font=font)
-        colon_x = sx + ab_w + _px(3) + _px(6)
-        item_w = colon_x + _px(3) - sx + draw.textlength(full_disp, font=font)
+        item_w = _legend_status_core_w(draw, font, ab_disp, full_disp)
         items.append((ab_disp, full_disp, sx, item_w))
-        sx += item_w + (_px(18) if ab == "V" else _px(14))
+        if i < n - 1:
+            extra = gap if gap is not None else _legend_default_status_gap(ab)
+            sx += item_w + extra
     return items
 
 
-def _legend_status_content_width(draw, font, locale="vi") -> float:
-    items = _legend_status_items(draw, font, locale=locale)
+def _legend_status_content_width(draw, font, locale="vi", gap=None) -> float:
+    items = _legend_status_items(draw, font, locale=locale, gap=gap)
     _ab, _full, sx, item_w = items[-1]
     return sx + item_w - items[0][2]
 
 
-def _legend_box(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int, locale="vi"):
-    """Gold legend rect sized so Hãm keeps inner padding; never overlap the Hợi chi tile."""
-    content_w = _legend_status_content_width(draw, font, locale=locale)
+def _legend_element_items(draw, font, start_x=0.0, locale="vi", gap=None):
+    """(key, color, label, x, item_w) for the ngũ hành chips."""
+    chip = _px(10)
+    sx = float(start_x)
+    items = []
+    n = len(LEGEND_ELEMENTS)
+    for i, (name, colr) in enumerate(LEGEND_ELEMENTS):
+        disp = t(locale, name, section="elements")
+        item_w = chip + _px(5) + draw.textlength(disp, font=font)
+        items.append((name, colr, disp, sx, item_w))
+        if i < n - 1:
+            if gap is None:
+                sx += max(item_w + _px(12), float(_px(64)))
+            else:
+                sx += item_w + gap
+    return items
+
+
+def _legend_metrics(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int, locale="vi"):
+    """Box + packed gaps so English (Temple/Prosper) stays inside the gold frame."""
     pad = _px(10)
     box_x1 = ox + grid - _px(8)
-    box_x0 = int(round(box_x1 - pad * 2 - content_w))
-    chi_right = ox + _px(8) + 11 * chi_stride + _px(62)
-    box_x0 = max(box_x0, chi_right + _px(8))
+    chi_min = ox + _px(8) + 11 * chi_stride + _px(62) + _px(8)
     box_y0, box_y1 = fy0 + _px(8), fy0 + style.footer - _px(8)
-    return box_x0, box_y0, box_x1, box_y1
+    avail = max(_px(48), box_x1 - chi_min - pad * 2)
 
+    status_natural = _legend_status_content_width(draw, font, locale=locale)
+    status_gap = None
+    status_w = status_natural
+    if status_natural > avail + 0.51:
+        cores = _legend_status_items(draw, font, locale=locale, gap=0)
+        cores_sum = sum(item[3] for item in cores)
+        n_gaps = max(1, len(cores) - 1)
+        status_gap = max(_px(6), (avail - cores_sum) / n_gaps)
+        status_w = cores_sum + status_gap * n_gaps
+
+    elem_airy = _legend_element_items(draw, font, locale=locale)
+    elem_natural = elem_airy[-1][3] + elem_airy[-1][4] - elem_airy[0][3]
+    elem_gap = None
+    elem_w = elem_natural
+    if elem_natural > avail + 0.51:
+        elem_gap = _px(8)
+        packed = _legend_element_items(draw, font, locale=locale, gap=elem_gap)
+        elem_w = packed[-1][3] + packed[-1][4] - packed[0][3]
+        if elem_w > avail + 0.51:
+            cores_sum = sum(item[4] for item in packed)
+            n_gaps = max(1, len(packed) - 1)
+            elem_gap = max(_px(4), (avail - cores_sum) / n_gaps)
+            packed = _legend_element_items(draw, font, locale=locale, gap=elem_gap)
+            elem_w = packed[-1][3] + packed[-1][4] - packed[0][3]
+
+    content_w = max(status_w, elem_w)
+    box_x0 = int(round(box_x1 - pad * 2 - content_w))
+    if content_w <= avail + 0.51:
+        box_x0 = max(box_x0, chi_min)
+    else:
+        box_x0 = max(ox + _px(8), box_x0)
+    return {
+        "box": (box_x0, box_y0, box_x1, box_y1),
+        "status_gap": status_gap,
+        "elem_gap": elem_gap,
+        "pad": pad,
+    }
+
+
+def _legend_box(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int, locale="vi"):
+    """Gold legend rect sized so the last status keeps inner padding; stays on-canvas."""
+    return _legend_metrics(draw, font, ox, grid, fy0, style, chi_stride, locale=locale)["box"]
 
 def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE, locale="vi"):
     x0, y0, x1, y1 = cx - w // 2, cy - h // 2, cx + w // 2, cy + h // 2
@@ -1258,7 +1332,11 @@ def generate_laso_image(
     ]
 
     left_x = cx0 + _px(18)
-    right_edge = cx1 - _px(16)
+    seal_sz = _px(110)
+    seal_m = _px(14)
+    seal_x = cx1 - seal_m - seal_sz
+    # Keep View year / Năm xem to the left of the red seal.
+    right_edge = min(cx1 - _px(16), seal_x - _px(10))
     lab_gap = _px(10)
     left_lab_w = max(draw.textlength(k, font=font_k) for k, _ in left)
     right_lab_w = max(draw.textlength(k, font=font_k) for k, _ in right)
@@ -1270,7 +1348,9 @@ def generate_laso_image(
     left_end = left_x + left_lab_w + lab_gap + left_val_w
     gutter = _px(16)
     if right_x < left_end + gutter:
-        right_x = left_end + gutter
+        shifted = left_end + gutter
+        if shifted + right_block <= right_edge + 0.51:
+            right_x = shifted
     ly = data_y
     for k, v in left:
         draw.text((left_x, ly), k, fill=style.ink_muted, font=font_k)
@@ -1283,18 +1363,16 @@ def generate_laso_image(
         draw.text((right_x + right_lab_w + lab_gap, ry), str(v), fill=style.ink, font=font_v)
         ry += row_h
 
-    seal_sz = _px(110)
-    seal_m = _px(14)
     seal = _load_asset("seal_red.png")
     if seal:
         _paste_rgba(
             img,
             _fit_square(seal, seal_sz, pad=_px(2)),
-            (cx1 - seal_m - seal_sz, cy1 - seal_m - seal_sz),
+            (seal_x, cy1 - seal_m - seal_sz),
         )
     else:
         draw.rectangle(
-            [cx1 - seal_m - seal_sz, cy1 - seal_m - seal_sz, cx1 - seal_m, cy1 - seal_m],
+            [seal_x, cy1 - seal_m - seal_sz, seal_x + seal_sz, cy1 - seal_m],
             outline=style.seal_red,
             width=_px(2),
         )
@@ -1319,32 +1397,31 @@ def generate_laso_image(
 
     # Legend: ngũ hành colors + Miếu/Vượng/Đắc/Bình/Hãm (box grows with Noto Serif)
     font_leg = get_font(_px(13), True, bold_path, locale=locale)
-    box_x0, box_y0, box_x1, box_y1 = _legend_box(draw, font_leg, ox, grid, fy0, style, chi_stride, locale=locale)
+    metrics = _legend_metrics(draw, font_leg, ox, grid, fy0, style, chi_stride, locale=locale)
+    box_x0, box_y0, box_x1, box_y1 = metrics["box"]
+    pad = metrics["pad"]
     draw.rectangle([box_x0, box_y0, box_x1, box_y1], outline=style.gold, width=max(1, _px(1)))
-    elements = [
-        ("Kim", ELEMENT_COLORS["Kim"]),
-        ("Mộc", ELEMENT_COLORS["Mộc"]),
-        ("Thủy", ELEMENT_COLORS["Thủy"]),
-        ("Hỏa", ELEMENT_COLORS["Hỏa"]),
-        ("Thổ", ELEMENT_COLORS["Thổ"]),
-    ]
-    ex, ey = box_x0 + _px(10), box_y0 + _px(14)
+    ex0 = box_x0 + pad
     cap = draw.textbbox((0, 0), "H", font=font_leg)
     cap_mid = (cap[1] + cap[3]) / 2
     chip = _px(10)
-    for name, colr in elements:
+    ey = box_y0 + _px(14)
+    for _name, colr, disp, sx, item_w in _legend_element_items(
+        draw, font_leg, ex0, locale=locale, gap=metrics["elem_gap"]
+    ):
         cy = ey + cap_mid - _px(1)
         draw.rounded_rectangle(
-            [ex, cy - chip / 2, ex + chip, cy + chip / 2],
+            [sx, cy - chip / 2, sx + chip, cy + chip / 2],
             radius=max(1, _px(1)),
             fill=colr,
             outline="#F5E6C8",
             width=max(1, _px(1)),
         )
-        draw.text((ex + chip + _px(5), ey), t(locale, name, section="elements"), fill="#F5E6C8", font=font_leg)
-        ex += _px(64)
+        draw.text((sx + chip + _px(5), ey), disp, fill="#F5E6C8", font=font_leg)
     sy = box_y0 + _px(50)
-    for ab, full, sx, _item_w in _legend_status_items(draw, font_leg, box_x0 + _px(10), locale=locale):
+    for ab, full, sx, _item_w in _legend_status_items(
+        draw, font_leg, ex0, locale=locale, gap=metrics["status_gap"]
+    ):
         draw.text((sx, sy), ab, fill=style.gold_bright, font=font_leg)
         ab_w = draw.textlength(ab, font=font_leg)
         colon_x = _legend_colon(draw, sx + ab_w + _px(3), sy + cap_mid, style.gold_bright)

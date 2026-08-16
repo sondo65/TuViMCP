@@ -347,6 +347,61 @@ def test_legend_ham_has_right_padding():
     assert x0 >= chi_right + _px(6)
 
 
+def test_english_legend_stays_inside_gold_box():
+    """English Temple/Prosper/Neutral must not spill past the gold legend frame."""
+    from PIL import Image, ImageDraw
+
+    from tuvi_mcp._rendering import STYLE, _legend_metrics, _legend_element_items, _legend_status_items, _px, _resolve_style, get_font
+
+    s = _resolve_style(STYLE)
+    ox = s.pad
+    grid = s.cell * 4
+    fy0 = ox + grid
+    draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    font = get_font(_px(13), True)
+    m = _legend_metrics(draw, font, ox, grid, fy0, s, _px(72), locale="en")
+    x0, _y0, x1, _y1 = m["box"]
+    pad = m["pad"]
+    assert x1 <= ox + grid - _px(8) + 0.51
+    items = _legend_status_items(draw, font, x0 + pad, locale="en", gap=m["status_gap"])
+    last = items[-1]
+    assert last[2] + last[3] <= x1 - pad + 0.51
+    els = _legend_element_items(draw, font, x0 + pad, locale="en", gap=m["elem_gap"])
+    last_el = els[-1]
+    assert last_el[3] + last_el[4] <= x1 - pad + 0.51
+
+
+def test_english_view_year_clears_red_seal():
+    """EN 'View year 2026' stays left of the enlarged Tử Vi seal."""
+    from tuvi_mcp._rendering import STYLE, _px, _resolve_style, get_font, t
+
+    s = _resolve_style(STYLE)
+    ox = s.pad
+    cx1 = ox + 3 * s.cell
+    seal_sz, seal_m = _px(110), _px(14)
+    seal_x = cx1 - seal_m - seal_sz
+    right_edge = min(cx1 - _px(16), seal_x - _px(10))
+    font_k = get_font(_px(20), False, locale="en")
+    font_v = get_font(_px(22), True, locale="en")
+    lab = t("en", "Năm xem", section="ui")
+    val = "2026"
+    # Worst-case right column uses the longest EN label width.
+    from PIL import Image, ImageDraw
+
+    draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    labels = [
+        t("en", k, section="ui")
+        for k in ("Bản mệnh", "Hành cục", "Chủ mệnh", "Chủ thân", "Năm xem")
+    ]
+    lab_w = max(draw.textlength(k, font=font_k) for k in labels)
+    val_w = draw.textlength(val, font=font_v)
+    year_end = right_edge
+    year_start = year_end - val_w
+    assert year_end <= seal_x - _px(8)
+    assert year_start >= 0
+    assert lab == "View year" or "year" in lab.lower()
+
+
 def test_palace_title_to_star_clears_serif_ink():
     """Noto Serif palace titles (PHỤ MẪU) sit above the first star, not overlapping it."""
     from tuvi_mcp._rendering import _palace_title_to_star_offset, _px, get_font
