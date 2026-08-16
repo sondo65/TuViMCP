@@ -279,6 +279,8 @@ def _load_asset(filename: str) -> Optional[Image.Image]:
         # Freeform S-dragons; circular mask shears whiskers/claws.
         im = _strip_square_frame(im)
         im = _knockout_cream(im, min_luma=165)
+    elif filename in ("bagua.png", "seal_red.png"):
+        im = _knockout_card_frame(im)
     return im
 
 
@@ -367,6 +369,48 @@ def _knockout_dark(im: Image.Image) -> Image.Image:
         px[x, y] = (0, 0, 0, 0)
         stack.extend(((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
     return im
+
+
+def _knockout_card_frame(im: Image.Image, margin_frac: float = 0.08) -> Image.Image:
+    """Punch the leftover Stitch gold square around bagua/seal; keep the inner art."""
+    im = im.convert("RGBA")
+    w, h = im.size
+    if w < 8 or h < 8:
+        return im
+    px = im.load()
+    margin = max(3, int(round(min(w, h) * margin_frac)))
+    seen = bytearray(w * h)
+    stack: list[tuple[int, int]] = []
+
+    def push(x: int, y: int) -> None:
+        if x < 0 or y < 0 or x >= w or y >= h:
+            return
+        idx = y * w + x
+        if seen[idx] or px[x, y][3] < 20:
+            return
+        seen[idx] = 1
+        stack.append((x, y))
+
+    for y in range(h):
+        for x in range(w):
+            if x < margin or y < margin or x >= w - margin or y >= h - margin:
+                push(x, y)
+    i = 0
+    while i < len(stack):
+        x, y = stack[i]
+        i += 1
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            push(x + dx, y + dy)
+    if seen[(h // 2) * w + (w // 2)]:
+        bbox = im.getbbox()
+        return im.crop(bbox) if bbox else im
+    for y in range(h):
+        row = y * w
+        for x in range(w):
+            if seen[row + x]:
+                px[x, y] = (0, 0, 0, 0)
+    bbox = im.getbbox()
+    return im.crop(bbox) if bbox else im
 
 
 def _strip_square_frame(im: Image.Image) -> Image.Image:
@@ -618,6 +662,20 @@ def draw_text_fallback(draw, xy, text, fonts, fill, anchor=None):
     x, y = xy
     
     for char in text:
+        if char.isspace():
+            font_sp = fonts[0]
+            try:
+                advance = font_sp.getlength(char)
+            except Exception:
+                advance = 0
+            if advance <= 0:
+                try:
+                    advance = font_sp.getlength(" ")
+                except Exception:
+                    advance = _px(8)
+            x += advance
+            continue
+
         # Find the first font that can render this character
         font_to_use = None
         for font in fonts:
@@ -1123,14 +1181,17 @@ def generate_laso_image(
     row_h = _px(50)
     data_h = n_rows * row_h
     dragon_sz = _px(92)
-    blocks = title_h + dragon_sz + name_h + data_h
-    # Equal top pad + 3 mid gaps + bottom pad — fill the 2×2 square
-    free = max(_px(50), (cy1 - cy0) - blocks)
-    gap = free / 5
+    bagua_sz = _px(124)
+    ornament_h = max(dragon_sz, bagua_sz)
+    icon_name_gap = _px(12)
+    blocks = title_h + ornament_h + icon_name_gap + name_h + data_h
+    # Equal pads around title / data; keep name tucked under the compass.
+    free = max(_px(40), (cy1 - cy0) - blocks)
+    gap = free / 4
 
     title_y = cy0 + gap
     icon_y = int(title_y + title_h + gap)
-    name_y = int(icon_y + dragon_sz + gap)
+    name_y = int(icon_y + ornament_h + icon_name_gap)
     data_y = int(name_y + name_h + gap)
 
     tw = draw.textlength(title, font=font_title)
@@ -1138,15 +1199,19 @@ def generate_laso_image(
 
     bagua = _load_asset("bagua.png")
     if bagua:
-        bagua = bagua.resize((dragon_sz, dragon_sz), Image.Resampling.LANCZOS)
-        _paste_rgba(img, bagua, (ox + style.cell * 2 - dragon_sz // 2, icon_y))
+        _paste_rgba(
+            img,
+            _fit_square(bagua, bagua_sz, pad=_px(1)),
+            (ox + style.cell * 2 - bagua_sz // 2, icon_y),
+        )
 
     dl = _load_asset("dragon_left.png")
     dr = _load_asset("dragon_right.png")
+    dragon_y = icon_y + (ornament_h - dragon_sz) // 2
     if dl:
-        _paste_rgba(img, _fit_square(dl, dragon_sz, pad=_px(4)), (cx0 + _px(18), icon_y))
+        _paste_rgba(img, _fit_square(dl, dragon_sz, pad=_px(4)), (cx0 + _px(18), dragon_y))
     if dr:
-        _paste_rgba(img, _fit_square(dr, dragon_sz, pad=_px(4)), (cx1 - _px(18) - dragon_sz, icon_y))
+        _paste_rgba(img, _fit_square(dr, dragon_sz, pad=_px(4)), (cx1 - _px(18) - dragon_sz, dragon_y))
 
     # Use font fallback for mixed-script names (e.g. "Nguyễn" on Chinese chart)
     fallback_fonts = [font_name]  # Locale primary font first
@@ -1218,12 +1283,21 @@ def generate_laso_image(
         draw.text((right_x + right_lab_w + lab_gap, ry), str(v), fill=style.ink, font=font_v)
         ry += row_h
 
+    seal_sz = _px(110)
+    seal_m = _px(14)
     seal = _load_asset("seal_red.png")
     if seal:
-        seal = seal.resize((_px(72), _px(72)), Image.Resampling.LANCZOS)
-        _paste_rgba(img, seal, (cx1 - _px(90), cy1 - _px(95)))
+        _paste_rgba(
+            img,
+            _fit_square(seal, seal_sz, pad=_px(2)),
+            (cx1 - seal_m - seal_sz, cy1 - seal_m - seal_sz),
+        )
     else:
-        draw.rectangle([cx1 - _px(90), cy1 - _px(95), cx1 - _px(20), cy1 - _px(25)], outline=style.seal_red, width=_px(2))
+        draw.rectangle(
+            [cx1 - seal_m - seal_sz, cy1 - seal_m - seal_sz, cx1 - seal_m, cy1 - seal_m],
+            outline=style.seal_red,
+            width=_px(2),
+        )
 
     # --- Footer ---
     fy0 = oy + grid

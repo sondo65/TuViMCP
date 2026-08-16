@@ -284,6 +284,42 @@ def test_center_dragons_have_no_square_card_frame():
         assert top < w * 0.25, f"{name} still has a gold bar along the top"
 
 
+def test_bagua_and_seal_have_no_square_card_frame():
+    """Bagua compass and red Tử Vi seal drop the Stitch gold square card."""
+    from tuvi_mcp._rendering import _load_asset
+
+    _load_asset.cache_clear()
+    for name in ("bagua.png", "seal_red.png"):
+        im = _load_asset(name)
+        assert im is not None
+        w, h = im.size
+        for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+            assert im.getpixel((x, y))[3] < 40, f"{name} corner {(x, y)} still opaque"
+        top = sum(1 for x in range(w) if im.getpixel((x, 0))[3] > 80)
+        assert top < w * 0.35, f"{name} still has a gold bar along the top"
+        assert im.getpixel((w // 2, h // 2))[3] > 80
+
+
+def test_draw_text_fallback_keeps_spaces_in_names():
+    """Space glyphs have an empty mask; fallback drawing must still advance so họ/tên stay split."""
+    from PIL import Image, ImageDraw
+
+    from tuvi_mcp._rendering import draw_text_fallback, get_font, _px
+
+    font = get_font(_px(28), True)
+
+    def ink_width(text: str) -> int:
+        im = Image.new("L", (1200, 120), 0)
+        draw = ImageDraw.Draw(im)
+        draw_text_fallback(draw, (10, 20), text, [font], fill=255)
+        bbox = im.getbbox()
+        return 0 if bbox is None else bbox[2] - bbox[0]
+
+    spaced = ink_width("Nguyễn Văn An")
+    glued = ink_width("NguyễnVănAn")
+    assert spaced > glued + 10
+
+
 def test_legend_ham_has_right_padding():
     """Footer legend Hãm stays inside the gold box with inner padding (Noto Serif)."""
     from PIL import Image, ImageDraw
