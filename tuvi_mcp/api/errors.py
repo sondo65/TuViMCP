@@ -16,6 +16,7 @@ STABLE_CODES = frozenset(
         "HOROSCOPE_ENGINE_ERROR",
         "CHART_RENDER_ERROR",
         "CHART_IMAGE_NOT_FOUND",
+        "UNAUTHORIZED",
     }
 )
 
@@ -69,6 +70,12 @@ def raise_http_error(
 def raise_from_engine_error(engine_error: dict, *, status_code: int = 400) -> None:
     code = map_engine_error_to_code(engine_error)
     raise_http_error(status_code=status_code, code=code, detail=_detail_message(engine_error))
+
+
+def raise_unauthorized(detail: str) -> None:
+    """Raise UnauthorizedError that app.py will handle specially."""
+    from tuvi_mcp.api.auth import UnauthorizedError
+    raise UnauthorizedError(detail)
 
 
 def raise_from_value_error(exc: ValueError) -> None:

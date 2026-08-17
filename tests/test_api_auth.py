@@ -80,17 +80,41 @@ def mock_jwks(ec_keys):
 def client_with_mocked_jwks(mock_jwks, ec_keys):
     """Test client with mocked JWKS endpoint."""
     
-    def mock_get_signing_key(self, kid):
+    def mock_get_signing_key(self, token):
         """Mock PyJWKClient.get_signing_key_from_jwt to return test key."""
         _, public_pem = ec_keys
         from jwt import PyJWK
-        return PyJWK({"kty": "EC", "key": public_pem})
+        from cryptography.hazmat.primitives import serialization
+        import jwt.utils
+        
+        # Load the public key from PEM  
+        public_key = serialization.load_pem_public_key(public_pem)
+        public_numbers = public_key.public_numbers()
+        
+        # Convert to JWK format for ES256
+        def int_to_b64url(value, byte_length):
+            return jwt.utils.base64url_encode(value.to_bytes(byte_length, 'big')).decode('ascii')
+        
+        x = int_to_b64url(public_numbers.x, 32)
+        y = int_to_b64url(public_numbers.y, 32)
+        
+        jwk_data = {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": x,
+            "y": y,
+            "use": "sig",
+            "kid": "test-key-1",
+            "alg": "ES256"
+        }
+        
+        return PyJWK(jwk_data)
     
     # Import app after env is set up
     from tuvi_mcp.api.app import app
     
-    # Mock PyJWKClient to avoid hitting real JWKS endpoint
-    with patch("jwt.PyJWKClient.get_signing_key_from_jwt", mock_get_signing_key):
+    # Mock PyJWKClient methods that auth.py uses
+    with patch("tuvi_mcp.api.auth.PyJWKClient.get_signing_key_from_jwt", mock_get_signing_key):
         yield TestClient(app)
 
 

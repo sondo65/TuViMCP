@@ -6,6 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from tuvi_mcp.api.auth import UnauthorizedError
 from tuvi_mcp.api.routes import health, horoscope
 
 app = FastAPI(title="TuViMCP REST")
@@ -16,6 +17,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(UnauthorizedError)
+async def unauthorized_exception_handler(_request: Request, exc: UnauthorizedError) -> JSONResponse:
+    """Handle JWT auth failures with unwrapped 401 responses."""
+    return JSONResponse(
+        status_code=401,
+        headers={"WWW-Authenticate": "Bearer"},
+        content={
+            "error": {
+                "code": "UNAUTHORIZED",
+                "detail": exc.detail,
+            }
+        },
+    )
 
 
 @app.exception_handler(RequestValidationError)

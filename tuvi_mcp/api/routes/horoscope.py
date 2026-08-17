@@ -5,11 +5,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, JSONResponse
 
 from tuvi_mcp import Horoscope
 from tuvi_mcp._input import coerce_timezone, validate_birth_parameters
+from tuvi_mcp.api.auth import require_supabase_jwt
 from tuvi_mcp.api.chart_images import resolve_chart_path, save_chart_png
 from tuvi_mcp.api.errors import raise_from_engine_error, raise_from_value_error, raise_http_error
 from tuvi_mcp.api.schemas import HoroscopeGenerateRequest
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/v1/horoscope", tags=["horoscope"])
 
 
 @router.post("/generate", response_model=None)
-def post_generate(body: HoroscopeGenerateRequest):
+def post_generate(body: HoroscopeGenerateRequest, _claims: dict = Depends(require_supabase_jwt)):
     """Generate a birth chart and return image_url + name."""
     tz, tz_error = coerce_timezone(body.timezone, default=7.0)
     if tz_error is not None:
