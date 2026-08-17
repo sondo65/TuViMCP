@@ -40,6 +40,7 @@ Documentation = "https://tuvimcp.readthedocs.io/en/latest/"
 api = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "PyJWT[crypto]>=2.10",
 ]
 test = [
     "pytest>=8.0.0",

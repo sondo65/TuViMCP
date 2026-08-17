@@ -15,6 +15,12 @@ db_fd, db_path = tempfile.mkstemp(suffix=".db")
 os.close(db_fd)
 os.environ["TUVI_DB_PATH"] = db_path
 
+
+@pytest.fixture(autouse=True)
+def disable_auth_for_existing_tests(monkeypatch):
+    """Autouse fixture to disable auth for all existing horoscope tests."""
+    monkeypatch.setenv("TUVI_MCP_AUTH_DISABLED", "1")
+
 from tuvi_mcp.api.app import app  # noqa: E402
 from tuvi_mcp.api.errors import STABLE_CODES  # noqa: E402
 
