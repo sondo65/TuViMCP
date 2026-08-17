@@ -101,8 +101,10 @@ def require_supabase_jwt(authorization: Optional[str] = Header(default=None)) ->
         
     except jwt.ExpiredSignatureError:
         raise UnauthorizedError("Token has expired")
-    except jwt.InvalidTokenError as e:
+    except jwt.InvalidTokenError:
         raise UnauthorizedError("Invalid token")
-    except Exception as e:
-        # Catch any JWKS or network errors
+    except UnauthorizedError:
+        raise
+    except Exception:
+        # Catch JWKS / network errors from PyJWKClient
         raise UnauthorizedError("Token verification failed")

@@ -160,6 +160,32 @@ def test_generate_no_authorization_returns_401(client_with_mocked_jwks):
     assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
+def test_generate_missing_supabase_url_returns_config_detail(client_with_mocked_jwks, monkeypatch):
+    """Missing SUPABASE_URL must not be swallowed as Token verification failed."""
+    monkeypatch.delenv("SUPABASE_URL", raising=False)
+    from tuvi_mcp.api.auth import _get_jwks_client
+
+    _get_jwks_client.cache_clear()
+    payload = {
+        "name": "Test User",
+        "day": 10,
+        "month": 6,
+        "year": 1995,
+        "hour_val": "14:30",
+        "gender_val": "Nam",
+        "is_solar": True,
+        "timezone": 7,
+    }
+    headers = {"Authorization": "Bearer abc.def.ghi"}
+
+    response = client_with_mocked_jwks.post(
+        "/v1/horoscope/generate", json=payload, headers=headers
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["detail"] == "Missing SUPABASE_URL configuration"
+
+
 def test_generate_garbage_token_returns_401(client_with_mocked_jwks):
     """POST with Bearer garbage token returns 401 UNAUTHORIZED."""
     payload = {
