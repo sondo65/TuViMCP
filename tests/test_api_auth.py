@@ -360,7 +360,7 @@ def test_generate_valid_token_returns_200(client_with_mocked_jwks, ec_keys, vali
     
     assert response.status_code == 200
     data = response.json()
-    assert "image_url" in data
+    assert "image_base64" in data
     assert "name" in data
 
 
@@ -397,7 +397,7 @@ def test_generate_anonymous_user_token_returns_200(client_with_mocked_jwks, ec_k
     
     assert response.status_code == 200
     data = response.json()
-    assert "image_url" in data
+    assert "image_base64" in data
     assert "name" in data
 
 
@@ -409,16 +409,10 @@ def test_health_no_header_returns_200(client_with_mocked_jwks):
     assert response.json() == {"status": "ok"}
 
 
-def test_get_images_no_header_not_401(client_with_mocked_jwks):
-    """GET /v1/horoscope/images/{uuid}.png with no header is not 401 (public endpoint)."""
-    # This should return 404 CHART_IMAGE_NOT_FOUND, not 401
+def test_get_images_route_gone(client_with_mocked_jwks):
+    """GET /v1/horoscope/images is removed; no JWT required path remains."""
     response = client_with_mocked_jwks.get("/v1/horoscope/images/test-uuid.png")
-    
-    assert response.status_code != 401
-    # Should be 404 with CHART_IMAGE_NOT_FOUND error code
-    if response.status_code == 404:
-        body = response.json()
-        assert body["detail"]["error"]["code"] == "CHART_IMAGE_NOT_FOUND"
+    assert response.status_code == 404
 
 
 def pytest_sessionfinish(session, exitstatus):

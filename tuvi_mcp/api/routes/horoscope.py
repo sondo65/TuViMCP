@@ -7,12 +7,12 @@ from datetime import datetime
 from typing import Union
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 
 from tuvi_mcp import Horoscope
 from tuvi_mcp._input import coerce_timezone, validate_birth_parameters
 from tuvi_mcp.api.auth import require_supabase_jwt
-from tuvi_mcp.api.chart_images import resolve_chart_path, save_chart_png
+from tuvi_mcp.api.chart_images import encode_png_base64
 from tuvi_mcp.api.errors import raise_from_engine_error, raise_from_value_error, raise_http_error
 from tuvi_mcp.api.schemas import HoroscopeGenerateRequest, HoroscopeTransitRequest
 from tuvi_mcp.i18n import normalize_locale, t
@@ -76,7 +76,7 @@ def _invalid_locale_response(body_locale: str | None) -> JSONResponse:
 
 @router.post("/generate", response_model=None)
 def post_generate(body: HoroscopeGenerateRequest, _claims: dict = Depends(require_supabase_jwt)):
-    """Generate a birth chart and return image_url + name."""
+    """Generate a birth chart and return image_base64 + name (no server-side PNG persist)."""
     try:
         horoscope, locale = _build_horoscope(body)
     except ValueError:
@@ -87,12 +87,10 @@ def post_generate(body: HoroscopeGenerateRequest, _claims: dict = Depends(requir
 
         view_year = body.current_year if body.current_year is not None else datetime.now().year
         temp_png_path = horoscope.render_chart(chart, year=view_year, locale=locale)
-
-        chart_id = save_chart_png(temp_png_path)
-        image_url = f"/v1/horoscope/images/{chart_id}.png"
+        image_base64 = encode_png_base64(temp_png_path, delete_source=True)
 
         return {
-            "image_url": image_url,
+            "image_base64": image_base64,
             "name": body.name if body.name else t(locale, "Khách", section="ui"),
         }
     except ValueError as exc:
@@ -152,19 +150,3 @@ def post_transit(body: HoroscopeTransitRequest, _claims: dict = Depends(require_
         )
 
 
-@router.get("/images/{chart_id}.png")
-def get_chart_image(chart_id: str) -> FileResponse:
-    """Serve PNG chart image by chart ID."""
-    chart_path = resolve_chart_path(chart_id)
-    if chart_path is None:
-        raise_http_error(
-            status_code=404,
-            code="CHART_IMAGE_NOT_FOUND",
-            detail=f"Chart image not found: {chart_id}",
-        )
-
-    return FileResponse(
-        path=str(chart_path),
-        media_type="image/png",
-        filename=f"{chart_id}.png",
-    )
