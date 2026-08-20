@@ -1,13 +1,21 @@
 # -*- coding: utf-8 -*-
 """FastAPI application entry point."""
 
+from __future__ import annotations
+
+import logging
+import os
+import sys
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from tuvi_mcp.api.auth import UnauthorizedError
+from tuvi_mcp.api.auth import UnauthorizedError, auth_status_for_startup, probe_jwks_key_count
 from tuvi_mcp.api.routes import health, horoscope
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="TuViMCP REST")
 
@@ -17,6 +25,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def validate_auth_configuration() -> None:
+    """Fail fast in production without SUPABASE_URL; warn when JWKS or auth bypass is misconfigured."""
+    status = auth_status_for_startup()
+    for warning in status.warnings:
+        logger.warning(warning)
+
+    if status.fatal_error:
+        logger.error(status.fatal_error)
+        sys.exit(1)
+
+    if status.auth_enabled:
+        key_count = probe_jwks_key_count()
+        if key_count == 0:
+            logger.warning(
+                "JWKS probe returned 0 keys for %s — JWT verification will fail until "
+                "Supabase JWT signing keys are migrated to ES256.",
+                status.supabase_url,
+            )
+        else:
+            logger.info("JWKS probe OK: %d signing key(s) for %s", key_count, status.supabase_url)
+    else:
+        logger.warning(
+            "JWT auth is DISABLED (TUVI_MCP_AUTH_DISABLED). POST /v1/horoscope/* accepts "
+            "requests without Bearer tokens — dev/pytest only."
+        )
 
 
 @app.exception_handler(UnauthorizedError)
