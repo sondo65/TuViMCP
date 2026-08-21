@@ -193,3 +193,5 @@ __pycache__/
 PLAN.md
 
 docs/source/api/_autosummary/
+
+.worktrees/

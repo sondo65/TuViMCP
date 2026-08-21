@@ -855,6 +855,49 @@ def _legend_box(draw, font, ox, grid, fy0, style: LasoStyle, chi_stride: int, lo
     """Gold legend rect sized so the last status keeps inner padding; stays on-canvas."""
     return _legend_metrics(draw, font, ox, grid, fy0, style, chi_stride, locale=locale)["box"]
 
+def _thien_ban_pack(
+    left_x: float,
+    left_lab_w: float,
+    left_val_w: float,
+    right_lab_w: float,
+    right_val_w: float,
+    lab_gap: int,
+    cx1: int,
+) -> tuple[float, float, int]:
+    """Pack the right column against inner gold. Returns (left_end, right_x, gutter)."""
+    right_edge = cx1 - _px(16)
+    right_block = right_lab_w + lab_gap + right_val_w
+    right_x = right_edge - right_block
+    left_end = left_x + left_lab_w + lab_gap + left_val_w
+    gutter = _px(16)
+    if right_x < left_end + gutter:
+        right_x = left_end + gutter
+    return left_end, right_x, gutter
+
+
+def _stamp_clear_xy(
+    rx: float,
+    vx: float,
+    val_w: float,
+    y: float,
+    seal_x: int,
+    seal_y: int,
+    left_limit: float,
+    right_lab_w: float,
+    lab_gap: int,
+) -> tuple[float, float]:
+    """Slide a thiên-bàn data row left only when its ink would sit under the red seal."""
+    if y + _px(22) <= seal_y or vx + val_w <= seal_x - _px(10) + 0.51:
+        return rx, vx
+    limit = seal_x - _px(10)
+    row_w = right_lab_w + lab_gap + val_w
+    # Prefer keeping the year off the seal; only honor left_limit when both fit.
+    desired = min(rx, limit - row_w)
+    if left_limit + row_w <= limit + 0.51:
+        desired = max(desired, left_limit)
+    return desired, desired + right_lab_w + lab_gap
+
+
 def draw_badge(draw, cx, cy, text, w, h, font=None, style: LasoStyle = STYLE, locale="vi"):
     x0, y0, x1, y1 = cx - w // 2, cy - h // 2, cx + w // 2, cy + h // 2
     draw.rounded_rectangle(
@@ -1335,34 +1378,15 @@ def generate_laso_image(
     seal_sz = _px(110)
     seal_m = _px(14)
     seal_x = cx1 - seal_m - seal_sz
-    # Keep View year / Năm xem to the left of the red seal.
-    right_edge = min(cx1 - _px(16), seal_x - _px(10))
+    seal_y = cy1 - seal_m - seal_sz
     lab_gap = _px(10)
     left_lab_w = max(draw.textlength(k, font=font_k) for k, _ in left)
     right_lab_w = max(draw.textlength(k, font=font_k) for k, _ in right)
     left_val_w = max((draw.textlength(str(v), font=font_v) for _, v in left), default=0)
     right_val_w = max((draw.textlength(str(v), font=font_v) for _, v in right), default=0)
-    # Pack right column against the inner gold so long values (Hành cục) stay inside
-    right_block = right_lab_w + lab_gap + right_val_w
-    right_x = right_edge - right_block
-    left_end = left_x + left_lab_w + lab_gap + left_val_w
-    gutter = _px(16)
-    if right_x < left_end + gutter:
-        shifted = left_end + gutter
-        if shifted + right_block <= right_edge + 0.51:
-            right_x = shifted
-    ly = data_y
-    for k, v in left:
-        draw.text((left_x, ly), k, fill=style.ink_muted, font=font_k)
-        draw.text((left_x + left_lab_w + lab_gap, ly), str(v), fill=style.ink, font=font_v)
-        ly += row_h
-
-    ry = data_y
-    for k, v in right:
-        draw.text((right_x, ry), k, fill=style.ink_muted, font=font_k)
-        draw.text((right_x + right_lab_w + lab_gap, ry), str(v), fill=style.ink, font=font_v)
-        ry += row_h
-
+    left_end, right_x, gutter = _thien_ban_pack(
+        left_x, left_lab_w, left_val_w, right_lab_w, right_val_w, lab_gap, cx1
+    )
     seal = _load_asset("seal_red.png")
     if seal:
         _paste_rgba(
@@ -1376,6 +1400,37 @@ def generate_laso_image(
             outline=style.seal_red,
             width=_px(2),
         )
+
+    ly = data_y
+    for k, v in left:
+        draw.text((left_x, ly), k, fill=style.ink_muted, font=font_k)
+        draw.text((left_x + left_lab_w + lab_gap, ly), str(v), fill=style.ink, font=font_v)
+        ly += row_h
+
+    # Keep every right-hand label on the same x. Only Năm xem / View year
+    # may slide so the year digits stay off the seal; Chủ thân must not indent.
+    year_i = len(right) - 1
+    ry = data_y
+    for i, (k, v) in enumerate(right):
+        val = str(v)
+        val_w = draw.textlength(val, font=font_v)
+        rx = right_x
+        vx = right_x + right_lab_w + lab_gap
+        if i == year_i:
+            rx, vx = _stamp_clear_xy(
+                right_x,
+                vx,
+                val_w,
+                ry,
+                seal_x,
+                seal_y,
+                left_end + gutter,
+                right_lab_w,
+                lab_gap,
+            )
+        draw.text((rx, ry), k, fill=style.ink_muted, font=font_k)
+        draw.text((vx, ry), val, fill=style.ink, font=font_v)
+        ry += row_h
 
     # --- Footer ---
     fy0 = oy + grid

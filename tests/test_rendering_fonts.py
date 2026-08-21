@@ -372,34 +372,143 @@ def test_english_legend_stays_inside_gold_box():
 
 
 def test_english_view_year_clears_red_seal():
-    """EN 'View year 2026' stays left of the enlarged Tử Vi seal."""
-    from tuvi_mcp._rendering import STYLE, _px, _resolve_style, get_font, t
+    """EN View year value slides left of the seal without moving the whole column."""
+    from tuvi_mcp._rendering import STYLE, _px, _resolve_style, _stamp_clear_xy
 
     s = _resolve_style(STYLE)
     ox = s.pad
     cx1 = ox + 3 * s.cell
+    cy1 = ox + 3 * s.cell
     seal_sz, seal_m = _px(110), _px(14)
     seal_x = cx1 - seal_m - seal_sz
-    right_edge = min(cx1 - _px(16), seal_x - _px(10))
-    font_k = get_font(_px(20), False, locale="en")
-    font_v = get_font(_px(22), True, locale="en")
-    lab = t("en", "Năm xem", section="ui")
-    val = "2026"
-    # Worst-case right column uses the longest EN label width.
+    seal_y = cy1 - seal_m - seal_sz
+    rx, vx = 1451.0, 1662.0
+    val_w = 100.0
+    y = seal_y + _px(20)
+    rx2, vx2 = _stamp_clear_xy(rx, vx, val_w, y, seal_x, seal_y, 800.0, 191.0, _px(10))
+    assert vx2 + val_w <= seal_x - _px(8)
+    # Rows above the seal keep their original x.
+    rx3, vx3 = _stamp_clear_xy(rx, vx, val_w, seal_y - _px(80), seal_x, seal_y, 800.0, 191.0, _px(10))
+    assert (rx3, vx3) == (rx, vx)
+
+
+def test_vietnamese_thien_ban_columns_keep_gutter():
+    """VI left values (15/5/1990) must not collide with right labels (Bản mệnh)."""
     from PIL import Image, ImageDraw
 
+    from tuvi_mcp.horoscope import Horoscope
+    from tuvi_mcp._rendering import (
+        STYLE,
+        _px,
+        _resolve_style,
+        _thien_ban_pack,
+        get_font,
+        t,
+    )
+
+    s = _resolve_style(STYLE)
+    ox = s.pad
+    cx0, cx1 = ox + s.cell, ox + 3 * s.cell
     draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
-    labels = [
-        t("en", k, section="ui")
-        for k in ("Bản mệnh", "Hành cục", "Chủ mệnh", "Chủ thân", "Năm xem")
+    font_k = get_font(_px(20), False)
+    font_v = get_font(_px(22), True)
+    h = Horoscope.from_birth(
+        name="Nguyễn Văn An", day=15, month=5, year=1990, hour=9, gender="Nam"
+    )
+    tb = h.chart().to_dict()["thien_ban"]
+    left = [
+        (t("vi", "Dương lịch", section="ui"), tb.get("ngay_duong", "")),
+        (t("vi", "Âm lịch", section="ui"), tb.get("ngay_am", "")),
+        (
+            t("vi", "Giờ sinh", section="ui"),
+            tb.get("gio_sinh")
+            or f"{tb.get('can_gio_sinh', '')} {tb.get('chi_gio_sinh', '')}".strip(),
+        ),
+        (
+            t("vi", "Năm sinh", section="ui"),
+            f"{tb.get('can_nam', '')} {tb.get('chi_nam', '')}".strip(),
+        ),
+        (
+            t("vi", "Âm dương", section="ui"),
+            f"{tb.get('am_duong_nam_sinh', '')} {tb.get('gioi_tinh', '')}".strip(),
+        ),
     ]
-    lab_w = max(draw.textlength(k, font=font_k) for k in labels)
-    val_w = draw.textlength(val, font=font_v)
-    year_end = right_edge
-    year_start = year_end - val_w
-    assert year_end <= seal_x - _px(8)
-    assert year_start >= 0
-    assert lab == "View year" or "year" in lab.lower()
+    right = [
+        (t("vi", "Bản mệnh", section="ui"), t("vi", tb.get("ban_menh", "") or "", section="stars")),
+        (
+            t("vi", "Hành cục", section="ui"),
+            f"{t('vi', tb.get('ten_cuc', '') or '', section='stars')} ({tb.get('hanh_cuc', '')})".strip(),
+        ),
+        (t("vi", "Chủ mệnh", section="ui"), t("vi", tb.get("menh_chu", "") or "", section="stars")),
+        (t("vi", "Chủ thân", section="ui"), t("vi", tb.get("than_chu", "") or "", section="stars")),
+        (t("vi", "Năm xem", section="ui"), "2024"),
+    ]
+    lab_gap = _px(10)
+    left_x = cx0 + _px(18)
+    left_lab_w = max(draw.textlength(k, font=font_k) for k, _ in left)
+    left_val_w = max(draw.textlength(str(v), font=font_v) for _, v in left)
+    right_lab_w = max(draw.textlength(k, font=font_k) for k, _ in right)
+    right_val_w = max(draw.textlength(str(v), font=font_v) for _, v in right)
+    left_end, right_x, gutter = _thien_ban_pack(
+        left_x, left_lab_w, left_val_w, right_lab_w, right_val_w, lab_gap, cx1
+    )
+    assert right_x >= left_end + gutter
+    # Packed against inner gold, not pulled left to the seal (that caused VI overlap).
+    right_edge = cx1 - _px(16)
+    packed = right_edge - (right_lab_w + lab_gap + right_val_w)
+    assert abs(right_x - packed) < 0.51
+
+
+def test_chu_than_stays_on_right_column_x():
+    """Chủ thân must share the packed label x; only Năm xem may dodge the seal."""
+    from PIL import Image
+
+    from tuvi_mcp.horoscope import Horoscope
+    from tuvi_mcp._rendering import STYLE, _px, _resolve_style
+
+    s = _resolve_style(STYLE)
+    ox = s.pad
+    cy0, cy1 = ox + s.cell, ox + 3 * s.cell
+    title_h, name_h, n_rows, row_h = _px(52), _px(34), 5, _px(50)
+    data_h = n_rows * row_h
+    ornament_h = max(_px(92), _px(124))
+    blocks = title_h + ornament_h + _px(12) + name_h + data_h
+    gap = max(_px(40), (cy1 - cy0) - blocks) / 4
+    title_y = cy0 + gap
+    icon_y = int(title_y + title_h + gap)
+    name_y = int(icon_y + ornament_h + _px(12))
+    data_y = int(name_y + name_h + gap)
+
+    h = Horoscope.from_birth(
+        name="Nguyễn Văn An", day=15, month=5, year=1990, hour=9, gender="Nam"
+    )
+    img_path = h.render_chart(year=2024)
+    rgb = Image.open(img_path).convert("RGB")
+
+    def is_ink(p):
+        r, g, b = p
+        return r < 130 and g < 120 and b < 110
+
+    def right_label_x(row: int) -> int:
+        y0 = data_y + row * row_h
+        xs = []
+        for y in range(y0 + 12, y0 + 55):
+            for x in range(700, 1750):
+                if is_ink(rgb.getpixel((x, y))):
+                    xs.append(x)
+        groups = []
+        for x in sorted(set(xs)):
+            if not groups or x - groups[-1][-1] > 20:
+                groups.append([x])
+            else:
+                groups[-1].append(x)
+        assert len(groups) >= 3, groups
+        return groups[2][0]
+
+    chu_than_x = right_label_x(3)
+    assert abs(chu_than_x - right_label_x(0)) <= 8
+    assert abs(chu_than_x - right_label_x(2)) <= 8
+    assert abs(right_label_x(4) - right_label_x(0)) <= 8
 
 
 def test_palace_title_to_star_clears_serif_ink():

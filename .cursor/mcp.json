@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tuvi-horoscope": {
+      "command": "/Users/dotruongson/Documents/freelancer/TuViMCP/.venv/bin/tuvi-mcp",
+      "args": []
+    }
+  }
+}
