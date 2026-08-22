@@ -1961,6 +1961,7 @@ dependencies = [
 [package.optional-dependencies]
 api = [
     { name = "fastapi" },
+    { name = "pyjwt", extra = ["crypto"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
 docs = [
@@ -1989,6 +1990,7 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.27.2,<2.0.0" },
     { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=2.0" },
     { name = "pillow", specifier = ">=10.0.0" },
+    { name = "pyjwt", extras = ["crypto"], marker = "extra == 'api'", specifier = ">=2.10" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=7.2" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=2.0" },

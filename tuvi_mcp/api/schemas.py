@@ -31,3 +31,26 @@ class HoroscopeTransitRequest(HoroscopeBirthFields):
 
     current_year: int = Field(ge=1800, le=2100)
     current_month: int = Field(default=1, ge=1, le=12)
+    current_day: int | None = Field(default=None, ge=1, le=30)
+
+
+class CalendarConvertRequest(BaseModel):
+    """Solar ↔ Lunar conversion (no birth fields)."""
+
+    day: int = Field(ge=1, le=31)
+    month: int = Field(ge=1, le=12)
+    year: int = Field(ge=1800, le=2100)
+    from_solar: bool = True
+    lunar_leap: bool = False
+    timezone: int | float | str | None = 7
+
+
+class AuspiciousRequest(BaseModel):
+    """Auspicious day / hour evaluation for a calendar date (FORT-03)."""
+
+    day: int | None = Field(default=None, ge=1, le=31)
+    month: int | None = Field(default=None, ge=1, le=12)
+    year: int | None = Field(default=None, ge=1800, le=2100)
+    is_solar: bool = True
+    timezone: int | float | str | None = 7
+    activity: str | None = None

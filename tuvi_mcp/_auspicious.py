@@ -8,6 +8,17 @@ Wraps tuvi_mcp.lunar_calendar with a complete Vietnamese localization mapping la
 
 from .lunar_calendar import Lunar, Solar
 
+
+def _score_activity_payload(
+    truc_info: dict,
+    day_hoang_dao: dict,
+    xiu_info: dict,
+    activity: str | None,
+) -> dict:
+    from ._activity_scorer import score_activity
+
+    return score_activity(truc_info, day_hoang_dao, xiu_info, activity)
+
 # Can & Chi maps
 CAN_MAP = {
     "甲": "Giáp",
@@ -275,7 +286,7 @@ def translate_direction(zh_dir: str) -> str:
     return DIRECTION_MAP.get(zh_dir.strip(), zh_dir)
 
 
-def get_auspicious_details(day: int, month: int, year: int, is_solar: bool = True, timezone: float = 7.0) -> dict:
+def get_auspicious_details(day: int, month: int, year: int, is_solar: bool = True, timezone: float = 7.0, activity: str | None = None) -> dict:
     """
     Evaluates Auspicious Days, Auspicious Hours (Hoàng Đạo / Hắc Đạo), 12 Trực, 28 Tú,
     Directions, and Tiết Khí for a given date in Vietnamese.
@@ -419,6 +430,9 @@ def get_auspicious_details(day: int, month: int, year: int, is_solar: bool = Tru
             "nhi_thap_bat_tu": xiu_info,
             "huong_xuat_hanh": huong_xuat_hanh,
             "gio_hoang_dao": gio_hoang_dao,
+            "danh_gia_viec": _score_activity_payload(
+                truc_info, day_hoang_dao, xiu_info, activity
+            ),
         }
     except Exception as e:
         return {"error": str(e)}

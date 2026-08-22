@@ -131,7 +131,7 @@ def post_chart(body: HoroscopeGenerateRequest, _claims: dict = Depends(require_s
 
 @router.post("/transit", response_model=None)
 def post_transit(body: HoroscopeTransitRequest, _claims: dict = Depends(require_supabase_jwt)):
-    """Return transit JSON for the requested year/month (D-15)."""
+    """Return transit JSON for the requested year/month (and optional lunar day)."""
     try:
         horoscope, _locale = _build_horoscope(body)
     except ValueError:
@@ -139,7 +139,11 @@ def post_transit(body: HoroscopeTransitRequest, _claims: dict = Depends(require_
 
     try:
         month = body.current_month or 1
-        return horoscope.transit(year=body.current_year, month=month).to_dict()
+        return horoscope.transit(
+            year=body.current_year,
+            month=month,
+            day=body.current_day,
+        ).to_dict()
     except ValueError as exc:
         raise_from_value_error(exc)
     except Exception as exc:  # pragma: no cover - defensive engine guard

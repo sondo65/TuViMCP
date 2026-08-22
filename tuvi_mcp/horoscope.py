@@ -254,9 +254,10 @@ class AuspiciousResult:
     gio_hoang_dao: list
     tiet_khi_hien_tai: str = "N/A"
     tiet_khi_tiep_theo: str = "N/A"
+    danh_gia_viec: dict | None = None
 
     def to_dict(self) -> dict:
-        return {
+        out = {
             "duong_lich": self.duong_lich,
             "am_lich": self.am_lich,
             "can_chi_ngay": self.can_chi_ngay,
@@ -268,6 +269,9 @@ class AuspiciousResult:
             "huong_xuat_hanh": self.huong_xuat_hanh,
             "gio_hoang_dao": self.gio_hoang_dao,
         }
+        if self.danh_gia_viec is not None:
+            out["danh_gia_viec"] = self.danh_gia_viec
+        return out
 
     def __getitem__(self, key: str) -> Any:
         try:

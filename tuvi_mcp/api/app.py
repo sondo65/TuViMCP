@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from tuvi_mcp.api.auth import UnauthorizedError, auth_status_for_startup, probe_jwks_key_count
-from tuvi_mcp.api.routes import health, horoscope
+from tuvi_mcp.api.routes import auspicious, calendar, health, horoscope
 
 logger = logging.getLogger(__name__)
 
@@ -94,3 +94,5 @@ async def validation_exception_handler(_request: Request, exc: RequestValidation
 
 app.include_router(health.router)
 app.include_router(horoscope.router)
+app.include_router(calendar.router)
+app.include_router(auspicious.router)

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Contract tests for POST /chart and POST /transit JSON endpoints."""
+"""Contract tests for POST /v1/calendar and POST /v1/auspicious."""
 
 from __future__ import annotations
 
@@ -18,21 +18,20 @@ db_fd, db_path = tempfile.mkstemp(suffix=".db")
 os.close(db_fd)
 os.environ["TUVI_DB_PATH"] = db_path
 
-VALID_PAYLOAD = {
-    "name": "Nguyễn Văn A",
-    "day": 10,
-    "month": 6,
-    "year": 1995,
-    "hour_val": "14:30",
-    "gender_val": "Nam",
-    "is_solar": True,
+CALENDAR_PAYLOAD = {
+    "day": 22,
+    "month": 8,
+    "year": 2026,
+    "from_solar": True,
     "timezone": 7,
 }
 
-TRANSIT_PAYLOAD = {
-    **VALID_PAYLOAD,
-    "current_year": 2026,
-    "current_month": 5,
+AUSPICIOUS_PAYLOAD = {
+    "day": 22,
+    "month": 8,
+    "year": 2026,
+    "is_solar": True,
+    "timezone": 7,
 }
 
 
@@ -107,71 +106,87 @@ def valid_claims():
     }
 
 
-def test_chart_no_authorization_returns_401(client_with_mocked_jwks):
-    response = client_with_mocked_jwks.post("/v1/horoscope/chart", json=VALID_PAYLOAD)
+def test_calendar_no_authorization_returns_401(client_with_mocked_jwks):
+    response = client_with_mocked_jwks.post("/v1/calendar", json=CALENDAR_PAYLOAD)
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
 
 
-def test_transit_no_authorization_returns_401(client_with_mocked_jwks):
-    response = client_with_mocked_jwks.post("/v1/horoscope/transit", json=TRANSIT_PAYLOAD)
+def test_auspicious_no_authorization_returns_401(client_with_mocked_jwks):
+    response = client_with_mocked_jwks.post("/v1/auspicious", json=AUSPICIOUS_PAYLOAD)
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
 
 
-def test_chart_valid_token_returns_dia_ban_thien_ban(
+def test_calendar_solar_to_lunar_aug_22_2026(
     client_with_mocked_jwks, ec_keys, valid_claims
 ):
     private_key, _ = ec_keys
     headers = _auth_headers(private_key, valid_claims)
 
     response = client_with_mocked_jwks.post(
-        "/v1/horoscope/chart", json=VALID_PAYLOAD, headers=headers
+        "/v1/calendar", json=CALENDAR_PAYLOAD, headers=headers
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert "dia_ban" in data
-    assert "thien_ban" in data
-    assert len(data["dia_ban"]) == 12
+    assert data["lunar_day"] == 10
+    assert data["lunar_month"] == 7
+    assert data["lunar_year"] == 2026
+    assert data["lunar_leap"] is False
 
 
-def test_transit_valid_token_returns_target_year(
+def test_auspicious_aug_22_2026_fields(
     client_with_mocked_jwks, ec_keys, valid_claims
 ):
     private_key, _ = ec_keys
     headers = _auth_headers(private_key, valid_claims)
 
     response = client_with_mocked_jwks.post(
-        "/v1/horoscope/transit", json=TRANSIT_PAYLOAD, headers=headers
+        "/v1/auspicious", json=AUSPICIOUS_PAYLOAD, headers=headers
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["target_period"]["current_year"] == 2026
-    assert "dai_han" in data
-    assert "tieu_han" in data
-    assert "nguyet_han" in data
-    assert "nhat_han" not in data
+    assert "Mậu Thìn" in data["can_chi_ngay"]
+    assert "Lập Thu" in data["tiet_khi_hien_tai"]
+    assert "duong_lich" in data
+    assert "ngay_hoang_dao" in data
+    assert "gio_hoang_dao" in data
+    assert isinstance(data["gio_hoang_dao"], list)
+    assert "danh_gia_viec" in data
+    assert data["danh_gia_viec"]["activity"] == "all"
 
 
-def test_transit_with_current_day_returns_nhat_han(
+def test_auspicious_invalid_activity_returns_400(
     client_with_mocked_jwks, ec_keys, valid_claims
 ):
     private_key, _ = ec_keys
     headers = _auth_headers(private_key, valid_claims)
-    payload = {**TRANSIT_PAYLOAD, "current_day": 10}
+    payload = {**AUSPICIOUS_PAYLOAD, "activity": "not_a_real_activity"}
 
     response = client_with_mocked_jwks.post(
-        "/v1/horoscope/transit", json=payload, headers=headers
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 400
+
+
+def test_auspicious_with_activity_ky_hop_dong(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {**AUSPICIOUS_PAYLOAD, "activity": "ky_hop_dong"}
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert "nhat_han" in data
-    assert data["nhat_han"]["cung_so"] >= 1
-    assert data["nhat_han"]["cung_so"] <= 12
-    assert isinstance(data["nhat_han"].get("sao"), list)
+    assert data["danh_gia_viec"]["activity"] == "ky_hop_dong"
+    assert "cat_percent" in data["danh_gia_viec"]
 
 
 def pytest_sessionfinish(session, exitstatus):
