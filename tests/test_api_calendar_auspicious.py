@@ -189,6 +189,23 @@ def test_auspicious_with_activity_ky_hop_dong(
     assert "cat_percent" in data["danh_gia_viec"]
 
 
+def test_auspicious_with_activity_nhap_hoc(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {**AUSPICIOUS_PAYLOAD, "activity": "nhap_hoc"}
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["danh_gia_viec"]["activity"] == "nhap_hoc"
+    assert "cat_percent" in data["danh_gia_viec"]
+
+
 def pytest_sessionfinish(session, exitstatus):
     try:
         os.remove(db_path)

@@ -31,6 +31,7 @@ ACTIVITY_SLUGS: frozenset[str] = frozenset(
         "xuat_hanh",
         "di_xa",
         "dong_tho",
+        "nhap_hoc",
     }
 )
 
@@ -43,7 +44,7 @@ ACTIVITY_KEYWORDS: dict[str, list[str]] = {
     "khai_truong": ["khai trương", "mở cửa hàng", "mở hàng"],
     "ky_hop_dong": ["ký kết", "ký hợp đồng", "hợp đồng", "lập hợp đồng"],
     "mo_hang": ["mở cửa hàng", "mở hàng", "khai trương"],
-    "nhap_trach": ["nhập trạch", "nhập học", "dọn nhà"],
+    "nhap_trach": ["nhập trạch", "dọn nhà"],
     "pha_do": ["phá dỡ", "phá vỡ", "dỡ nhà", "giải táng"],
     "phau_thuat": ["phẫu thuật", "khám bệnh", "chữa bệnh", "giải phẫu"],
     "bat_dau_cong_viec": [
@@ -62,6 +63,7 @@ ACTIVITY_KEYWORDS: dict[str, list[str]] = {
     "xuat_hanh": ["xuất hành", "đi thuyền", "du lịch"],
     "di_xa": ["đi xa", "xuất hành", "di chuyển", "trèo cao"],
     "dong_tho": ["động thổ", "đắp đập", "khởi công", "xây dựng"],
+    "nhap_hoc": ["nhập học"],
 }
 
 

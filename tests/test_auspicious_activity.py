@@ -64,7 +64,22 @@ def test_invalid_activity_slug_rejected_by_catalog():
     from tuvi_mcp._activity_catalog import is_valid_activity
 
     assert is_valid_activity("ky_hop_dong")
+    assert is_valid_activity("nhap_hoc")
     assert not is_valid_activity("not_a_real_activity")
+
+
+def test_nhap_hoc_scores_and_matches_keyword():
+    raw = get_auspicious_details(17, 8, 2026, activity="nhap_hoc")
+    dgv = raw["danh_gia_viec"]
+    assert dgv["activity"] == "nhap_hoc"
+    assert 0 <= dgv["cat_percent"] <= 100
+
+    truc = TRUC_MAP["Thành"]
+    verdict, source, keyword = truc_verdict_for_activity(truc, "nhap_hoc")
+    assert keyword is True
+    assert source == "truc_ngay"
+    assert verdict == "cat"
+    assert "nhập học" in truc["loi_khuyen"].lower()
 
 
 def test_response_always_includes_danh_gia_viec():
