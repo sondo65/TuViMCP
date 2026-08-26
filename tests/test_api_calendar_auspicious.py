@@ -206,6 +206,150 @@ def test_auspicious_with_activity_nhap_hoc(
     assert "cat_percent" in data["danh_gia_viec"]
 
 
+def test_auspicious_single_day_has_no_days_key(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=AUSPICIOUS_PAYLOAD, headers=headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "days" not in data
+    assert data["duong_lich"].startswith("22/08/2026")
+
+
+def test_auspicious_range_returns_days_array(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {
+        "start_day": 24,
+        "start_month": 8,
+        "start_year": 2026,
+        "end_day": 30,
+        "end_month": 8,
+        "end_year": 2026,
+        "is_solar": True,
+        "timezone": 7,
+    }
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "days" in data
+    assert len(data["days"]) == 7
+    assert data["days"][0]["duong_lich"].startswith("24/08/2026")
+    assert data["days"][-1]["duong_lich"].startswith("30/08/2026")
+    for day in data["days"]:
+        assert "can_chi_ngay" in day
+        assert "ngay_hoang_dao" in day
+        assert "gio_hoang_dao" in day
+        assert "danh_gia_viec" in day
+
+
+def test_auspicious_range_with_activity(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {
+        "start_day": 24,
+        "start_month": 8,
+        "start_year": 2026,
+        "end_day": 26,
+        "end_month": 8,
+        "end_year": 2026,
+        "activity": "ky_hop_dong",
+        "is_solar": True,
+        "timezone": 7,
+    }
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["days"]) == 3
+    for day in data["days"]:
+        assert day["danh_gia_viec"]["activity"] == "ky_hop_dong"
+        assert "cat_percent" in day["danh_gia_viec"]
+
+
+def test_auspicious_range_end_before_start_returns_400(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {
+        "start_day": 30,
+        "start_month": 8,
+        "start_year": 2026,
+        "end_day": 24,
+        "end_month": 8,
+        "end_year": 2026,
+        "is_solar": True,
+        "timezone": 7,
+    }
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 400
+
+
+def test_auspicious_range_too_large_returns_400(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {
+        "start_day": 1,
+        "start_month": 1,
+        "start_year": 2026,
+        "end_day": 15,
+        "end_month": 3,
+        "end_year": 2026,
+        "is_solar": True,
+        "timezone": 7,
+    }
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 400
+
+
+def test_auspicious_partial_range_returns_400(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {
+        "start_day": 24,
+        "start_month": 8,
+        "start_year": 2026,
+        "is_solar": True,
+        "timezone": 7,
+    }
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 400
+
+
 def pytest_sessionfinish(session, exitstatus):
     try:
         os.remove(db_path)

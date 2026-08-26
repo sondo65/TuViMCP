@@ -46,11 +46,45 @@ class CalendarConvertRequest(BaseModel):
 
 
 class AuspiciousRequest(BaseModel):
-    """Auspicious day / hour evaluation for a calendar date (FORT-03)."""
+    """Auspicious day / hour evaluation for a calendar date or inclusive range (FORT-03)."""
 
     day: int | None = Field(default=None, ge=1, le=31)
     month: int | None = Field(default=None, ge=1, le=12)
     year: int | None = Field(default=None, ge=1800, le=2100)
+    start_day: int | None = Field(default=None, ge=1, le=31)
+    start_month: int | None = Field(default=None, ge=1, le=12)
+    start_year: int | None = Field(default=None, ge=1800, le=2100)
+    end_day: int | None = Field(default=None, ge=1, le=31)
+    end_month: int | None = Field(default=None, ge=1, le=12)
+    end_year: int | None = Field(default=None, ge=1800, le=2100)
     is_solar: bool = True
     timezone: int | float | str | None = 7
     activity: str | None = None
+
+    @property
+    def range_field_values(self) -> tuple[
+        int | None,
+        int | None,
+        int | None,
+        int | None,
+        int | None,
+        int | None,
+    ]:
+        return (
+            self.start_day,
+            self.start_month,
+            self.start_year,
+            self.end_day,
+            self.end_month,
+            self.end_year,
+        )
+
+    @property
+    def has_complete_range(self) -> bool:
+        return all(value is not None for value in self.range_field_values)
+
+    @property
+    def has_partial_range(self) -> bool:
+        values = self.range_field_values
+        present = sum(1 for value in values if value is not None)
+        return 0 < present < len(values)
