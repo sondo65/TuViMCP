@@ -255,6 +255,8 @@ class AuspiciousResult:
     tiet_khi_hien_tai: str = "N/A"
     tiet_khi_tiep_theo: str = "N/A"
     danh_gia_viec: dict | None = None
+    ngu_hanh: dict | None = None
+    ngay_ky: dict | None = None
 
     def to_dict(self) -> dict:
         out = {
@@ -271,6 +273,10 @@ class AuspiciousResult:
         }
         if self.danh_gia_viec is not None:
             out["danh_gia_viec"] = self.danh_gia_viec
+        if self.ngu_hanh is not None:
+            out["ngu_hanh"] = self.ngu_hanh
+        if self.ngay_ky is not None:
+            out["ngay_ky"] = self.ngay_ky
         return out
 
     def __getitem__(self, key: str) -> Any:
@@ -457,6 +463,7 @@ class Horoscope:
         month: int | None = None,
         year: int | None = None,
         timezone: float | None = None,
+        menh: str | None = None,
     ) -> AuspiciousResult:
         """Evaluate auspicious details for a given calendar date.
 
@@ -468,11 +475,15 @@ class Horoscope:
         convert to Solar first using ``tuvi_mcp._calendar.convert_lunar_to_solar``
         if needed.
 
+        ``menh`` is an optional ban-mệnh letter (``K|M|T|H|O``) used for
+        ngũ hành interaction with the day's nạp âm.
+
         Returns:
             AuspiciousResult with fields: ``duong_lich``, ``am_lich``,
             ``can_chi_ngay``, ``ngay_hoang_dao``, ``truc_ngay``,
             ``nhi_thap_bat_tu``, ``huong_xuat_hanh``, ``gio_hoang_dao``,
-            ``tiet_khi_hien_tai``, ``tiet_khi_tiep_theo``.
+            ``tiet_khi_hien_tai``, ``tiet_khi_tiep_theo``, ``ngu_hanh``,
+            ``ngay_ky``.
         """
         today = date.today()
         tz = self._birth.timezone if timezone is None else timezone
@@ -482,6 +493,7 @@ class Horoscope:
             year if year is not None else today.year,
             is_solar=True,
             timezone=tz,
+            menh=menh,
         )
         if isinstance(raw, dict) and "error" in raw:
             raise ValueError(raw["error"])
@@ -496,6 +508,9 @@ class Horoscope:
             gio_hoang_dao=raw["gio_hoang_dao"],
             tiet_khi_hien_tai=raw.get("tiet_khi_hien_tai", "N/A"),
             tiet_khi_tiep_theo=raw.get("tiet_khi_tiep_theo", "N/A"),
+            danh_gia_viec=raw.get("danh_gia_viec"),
+            ngu_hanh=raw.get("ngu_hanh"),
+            ngay_ky=raw.get("ngay_ky"),
         )
 
     def render_chart(

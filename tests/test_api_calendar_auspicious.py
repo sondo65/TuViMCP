@@ -156,6 +156,30 @@ def test_auspicious_aug_22_2026_fields(
     assert isinstance(data["gio_hoang_dao"], list)
     assert "danh_gia_viec" in data
     assert data["danh_gia_viec"]["activity"] == "all"
+    assert "ngu_hanh" in data
+    assert "can_hanh" in data["ngu_hanh"]
+    assert "quan_he_menh" not in data["ngu_hanh"]
+    assert "ngay_ky" in data
+    assert "pham_ky" in data["ngay_ky"]
+    assert isinstance(data["ngay_ky"]["items"], list)
+
+
+def test_auspicious_with_menh_includes_quan_he_menh(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {**AUSPICIOUS_PAYLOAD, "menh": "T"}
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ngu_hanh"]["menh"] == "T"
+    assert "quan_he_menh" in data["ngu_hanh"]
+    assert "loi_khuyen" in data["ngu_hanh"]
 
 
 def test_auspicious_invalid_activity_returns_400(

@@ -60,6 +60,10 @@ class AuspiciousRequest(BaseModel):
     is_solar: bool = True
     timezone: int | float | str | None = 7
     activity: str | None = None
+    menh: str | None = Field(
+        default=None,
+        description="Ban mệnh element letter K|M|T|H|O (optional; enables quan_he_menh).",
+    )
 
     @property
     def range_field_values(self) -> tuple[

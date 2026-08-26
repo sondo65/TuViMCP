@@ -34,6 +34,8 @@ def _result_dict_from_raw(raw: dict) -> dict:
         tiet_khi_hien_tai=raw.get("tiet_khi_hien_tai", "N/A"),
         tiet_khi_tiep_theo=raw.get("tiet_khi_tiep_theo", "N/A"),
         danh_gia_viec=raw.get("danh_gia_viec", {}),
+        ngu_hanh=raw.get("ngu_hanh"),
+        ngay_ky=raw.get("ngay_ky"),
     ).to_dict()
 
 
@@ -45,6 +47,7 @@ def _evaluate_one_day(
     is_solar: bool,
     timezone: float,
     activity: str | None,
+    menh: str | None = None,
 ) -> dict:
     raw = get_auspicious_details(
         day,
@@ -53,6 +56,7 @@ def _evaluate_one_day(
         is_solar=is_solar,
         timezone=timezone,
         activity=activity,
+        menh=menh,
     )
     if isinstance(raw, dict) and "error" in raw:
         raise_from_engine_error(
@@ -180,6 +184,7 @@ def post_auspicious(
                     is_solar=body.is_solar,
                     timezone=tz,
                     activity=body.activity,
+                    menh=body.menh,
                 )
             )
             cursor += timedelta(days=1)
@@ -196,4 +201,5 @@ def post_auspicious(
         is_solar=body.is_solar,
         timezone=tz,
         activity=body.activity,
+        menh=body.menh,
     )

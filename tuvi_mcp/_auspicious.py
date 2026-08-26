@@ -286,7 +286,183 @@ def translate_direction(zh_dir: str) -> str:
     return DIRECTION_MAP.get(zh_dir.strip(), zh_dir)
 
 
-def get_auspicious_details(day: int, month: int, year: int, is_solar: bool = True, timezone: float = 7.0, activity: str | None = None) -> dict:
+_HANH_LETTER = {
+    "Kim": "K",
+    "Mộc": "M",
+    "Thủy": "T",
+    "Hỏa": "H",
+    "Thổ": "O",
+    "K": "K",
+    "M": "M",
+    "T": "T",
+    "H": "H",
+    "O": "O",
+}
+
+_HANH_NAME = {
+    "K": "Kim",
+    "M": "Mộc",
+    "T": "Thủy",
+    "H": "Hỏa",
+    "O": "Thổ",
+}
+
+# Short lore for common hung sát (Ngày Kỵ). Missing keys → empty string.
+XIONG_SHA_LORE: dict[str, str] = {
+    "Nguyệt Kiến": (
+        "Ngày Nguyệt Kiến: việc dễ giữa chừng trắc trở. "
+        "Nên tránh xuất hành xa, ký kết hợp đồng lớn."
+    ),
+    "Nguyệt Sát": (
+        "Ngày Nguyệt Sát: khí tháng xung khắc. "
+        "Hạn chế khởi sự lớn, động thổ, xuất hành."
+    ),
+    "Tứ Kỵ": (
+        "Ngày Tứ Kỵ: kỵ nhiều việc hệ trọng. "
+        "Nên trì hoãn hôn sự, khai trương, xuất hành xa."
+    ),
+    "Thiên Lao": (
+        "Ngày Thiên Lao: dễ gặp ràng buộc, trì trệ. "
+        "Tránh kiện tụng, ký kết ràng buộc dài hạn."
+    ),
+    "Thổ Phù": (
+        "Ngày Thổ Phù: kỵ động thổ, đào bới, sửa nhà lớn."
+    ),
+    "Ngũ Ly": (
+        "Ngày Ngũ Ly: dễ ly tán, chia lìa. "
+        "Tránh kết hôn, kết giao trọng yếu."
+    ),
+    "Tiểu Thời": (
+        "Ngày Tiểu Thời: việc nhỏ cũng dễ trắc trở; nên thận trọng từng bước."
+    ),
+    "Bạch Hổ": (
+        "Ngày Bạch Hổ: khí hung mạnh. "
+        "Tránh phẫu thuật, động máu, xuất hành nguy hiểm."
+    ),
+    "Thiên Tặc": (
+        "Ngày Thiên Tặc: đề phòng mất mát, trộm cắp; cẩn trọng tài sản."
+    ),
+}
+
+_RELATION_ADVICE = {
+    "sinh_nhap": "Khí ngày thuận hỗ trợ; thích hợp khởi sự, giao tiếp và quyết định quan trọng.",
+    "sinh_xuat": "Ngày tiêu hao khí lực; nên tiết kiệm sức, tránh mở rộng quá mức.",
+    "khac_nhap": "Bị khí ngày chế; thận trọng xung đột, trì hoãn việc lớn nếu có thể.",
+    "khac_xuat": "Có thể chủ động xử lý việc khó nhưng tránh tranh chấp gay gắt.",
+    "binh_hoa": "Ngày bình thường; làm việc ổn định, không nên liều lĩnh.",
+}
+
+
+def _normalize_menh_letter(menh: str | None) -> str | None:
+    if not menh:
+        return None
+    key = menh.strip()
+    letter = _HANH_LETTER.get(key) or _HANH_LETTER.get(key.title())
+    if letter:
+        return letter
+    upper = key.upper()
+    if upper in _HANH_NAME:
+        return upper
+    return None
+
+
+def _hanh_from_nap_am(nap_am: str) -> str | None:
+    text = (nap_am or "").strip()
+    for name, letter in (
+        ("Kim", "K"),
+        ("Mộc", "M"),
+        ("Thủy", "T"),
+        ("Hỏa", "H"),
+        ("Thổ", "O"),
+    ):
+        if text.endswith(name):
+            return letter
+    return None
+
+
+def _relation_label(hanh1_letter: str, hanh2_letter: str) -> tuple[str, str, str]:
+    """Return (display, code, loi_khuyen) for sinhKhac(hanh1, hanh2)."""
+    from ._engine.AmDuong import nguHanh, sinhKhac
+
+    h1 = nguHanh(hanh1_letter)
+    h2 = nguHanh(hanh2_letter)
+    rel = sinhKhac(h1["id"], h2["id"])
+    n1, n2 = h1["tenHanh"], h2["tenHanh"]
+    if rel == 1:
+        return f"{n1} sinh {n2} (Sinh xuất)", "sinh_xuat", _RELATION_ADVICE["sinh_xuat"]
+    if rel == -1:
+        return f"{n1} khắc {n2} (Khắc xuất)", "khac_xuat", _RELATION_ADVICE["khac_xuat"]
+    if rel == 1j:
+        return f"{n2} sinh {n1} (Sinh nhập)", "sinh_nhap", _RELATION_ADVICE["sinh_nhap"]
+    if rel == -1j:
+        return f"{n2} khắc {n1} (Khắc nhập)", "khac_nhap", _RELATION_ADVICE["khac_nhap"]
+    return f"{n1} – {n2} (Bình hòa)", "binh_hoa", _RELATION_ADVICE["binh_hoa"]
+
+
+def _build_ngu_hanh(lunar, day_gz: str, menh: str | None) -> dict:
+    from ._lunar_calendar.util.LunarUtil import LunarUtil
+
+    gan = lunar.getDayGan()
+    zhi = lunar.getDayZhi()
+    gan_vi = CAN_MAP.get(gan, gan)
+    zhi_vi = ZHI_MAP.get(zhi, zhi)
+    can_hanh = LunarUtil.WU_XING_GAN.get(gan_vi, "")
+    chi_hanh = LunarUtil.WU_XING_ZHI.get(zhi_vi, "")
+    nap_am = lunar.getDayNaYin() or ""
+
+    out: dict = {
+        "can_chi": day_gz,
+        "can_hanh": can_hanh,
+        "chi_hanh": chi_hanh,
+        "nap_am": nap_am,
+    }
+
+    can_letter = _HANH_LETTER.get(can_hanh)
+    chi_letter = _HANH_LETTER.get(chi_hanh)
+    if can_letter and chi_letter:
+        label, code, advice = _relation_label(can_letter, chi_letter)
+        out["quan_he_can_chi"] = label
+        out["quan_he_can_chi_code"] = code
+        # Default advice from can–chi; overridden by mệnh when present.
+        out["loi_khuyen"] = advice
+
+    menh_letter = _normalize_menh_letter(menh)
+    nap_letter = _hanh_from_nap_am(nap_am)
+    if menh_letter:
+        out["menh"] = menh_letter
+        out["menh_hanh"] = _HANH_NAME[menh_letter]
+        if nap_letter:
+            label, code, advice = _relation_label(menh_letter, nap_letter)
+            out["quan_he_menh"] = label
+            out["quan_he_menh_code"] = code
+            out["loi_khuyen"] = advice
+
+    return out
+
+
+def _build_ngay_ky(lunar) -> dict:
+    raw_sha = [s for s in (lunar.getDayXiongSha() or []) if s and s != "Không"]
+    viec_ky = [s for s in (lunar.getDayJi() or []) if s and s != "Không"]
+    items = [
+        {"ten": name, "loi_khuyen": XIONG_SHA_LORE.get(name, "")}
+        for name in raw_sha
+    ]
+    return {
+        "pham_ky": bool(items),
+        "items": items,
+        "viec_ky": viec_ky,
+    }
+
+
+def get_auspicious_details(
+    day: int,
+    month: int,
+    year: int,
+    is_solar: bool = True,
+    timezone: float = 7.0,
+    activity: str | None = None,
+    menh: str | None = None,
+) -> dict:
     """
     Evaluates Auspicious Days, Auspicious Hours (Hoàng Đạo / Hắc Đạo), 12 Trực, 28 Tú,
     Directions, and Tiết Khí for a given date in Vietnamese.
@@ -433,6 +609,8 @@ def get_auspicious_details(day: int, month: int, year: int, is_solar: bool = Tru
             "danh_gia_viec": _score_activity_payload(
                 truc_info, day_hoang_dao, xiu_info, activity
             ),
+            "ngu_hanh": _build_ngu_hanh(lunar, day_gz, menh),
+            "ngay_ky": _build_ngay_ky(lunar),
         }
     except Exception as e:
         return {"error": str(e)}

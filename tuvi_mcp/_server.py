@@ -236,10 +236,12 @@ def get_auspicious_info(
     year: int = None,
     is_solar: bool = True,
     timezone: Union[int, str, None] = None,
+    menh: str = None,
 ) -> dict:
     """
     Evaluate Auspicious Days (Ngày Hoàng Đạo / Hắc Đạo), Auspicious Hours (Giờ Hoàng Đạo / Hắc Đạo),
-    12 Trực, 28 Tú (Nhị Thập Bát Tú), Tiết Khí, and Auspicious Directions (Thần Hướng).
+    12 Trực, 28 Tú (Nhị Thập Bát Tú), Tiết Khí, Auspicious Directions (Thần Hướng),
+    Ngũ hành, and Ngày Kỵ.
 
     ### Purpose and Use Cases
     Use this tool when users ask to check good/bad days, auspicious hours for specific activities
@@ -256,6 +258,7 @@ def get_auspicious_info(
       tiết-khí names, trực, hoàng đạo) are derived from the Solar date via the OO layer which
       is anchored at UTC+7 for those J2000-epoch tables — exact tiết-khí timestamps in the
       response may differ slightly for non-7 tz near a tiết-khí boundary.
+    - `menh`: Optional ban mệnh letter (`K|M|T|H|O`) for ngũ hành interaction with day nạp âm.
 
     ### Returns
     A rich Vietnamese JSON structure detailing:
@@ -266,6 +269,8 @@ def get_auspicious_info(
     - `nhi_thap_bat_tu` (Tên Sao, Động vật, Cát/Hung)
     - `huong_xuat_hanh` (Hỷ Thần, Tài Thần, Phúc Thần, Dương/Âm Quý Thần)
     - `gio_hoang_dao` (12 Giờ Canh Chi, Khung giờ, Sao Hoàng Đạo/Hắc Đạo, Cát/Hung)
+    - `ngu_hanh` (can/chi, nạp âm, quan hệ; with menh also quan hệ mệnh)
+    - `ngay_ky` (pham_ky, items, viec_ky)
     """
     tz, err = _resolve_tz(timezone)
     if err is not None:
@@ -279,7 +284,9 @@ def get_auspicious_info(
     if year is None:
         year = now.year
 
-    return _get_auspicious_details(day, month, year, is_solar=is_solar, timezone=tz)
+    return _get_auspicious_details(
+        day, month, year, is_solar=is_solar, timezone=tz, menh=menh
+    )
 
 
 @mcp.tool()
