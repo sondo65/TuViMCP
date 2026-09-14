@@ -12,4 +12,5 @@ Visual assets for TuViMCP `generate_laso_image` (D-17). Sourced from **complete 
 
 - `dragon_bg.png` — full-chart eastern dragon watermark (cream knocked out at load)
 - `chi_*.png` — Stitch zodiac cards; cream card fill is knocked out at load so medallions sit on parchment/dragon
+- **Mão branch:** `chi_meo.png` / `chi_gold_meo.png` (cat) are used when chart `locale` is `vi`; `chi_mao.png` / `chi_gold_mao.png` (rabbit) for `en`, `zh`, `ja`, `ko`, `ms`
 - `corner_*.png`, `dragon_*.png`, `bagua.png`, `seal_red.png` — ornament tiles with cream knockout

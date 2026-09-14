@@ -716,14 +716,32 @@ def _chi_key_for_cung(cung_so: int, cung_ten: str = "") -> str:
     return CHI_ASSET_KEYS.get(chi, "")
 
 
-def _chi_icon(cung_so: int, cung_ten: str = "", size: int = 36, gold: bool = False) -> Optional[Image.Image]:
+def _chi_asset_slug(key: str, locale: str) -> str:
+    """Vietnamese zodiac uses cat for Mão; other locales keep rabbit (mao) assets."""
+    if key == "mao" and locale == "vi":
+        return "meo"
+    return key
+
+
+def _chi_asset_name(key: str, locale: str, gold: bool = False) -> str:
+    slug = _chi_asset_slug(key, locale)
+    return f"chi_gold_{slug}.png" if gold else f"chi_{slug}.png"
+
+
+def _chi_icon(
+    cung_so: int,
+    cung_ten: str = "",
+    size: int = 36,
+    gold: bool = False,
+    locale: str = "vi",
+) -> Optional[Image.Image]:
     key = _chi_key_for_cung(cung_so, cung_ten)
     if not key:
         return None
-    name = f"chi_gold_{key}.png" if gold else f"chi_{key}.png"
+    name = _chi_asset_name(key, locale, gold=gold)
     icon = _load_asset(name)
     if icon is None and gold:
-        icon = _load_asset(f"chi_{key}.png")
+        icon = _load_asset(_chi_asset_name(key, locale, gold=False))
     if icon is None:
         return None
     return _fit_square(icon, size, pad=1)
@@ -1205,7 +1223,7 @@ def generate_laso_image(
             tw = draw.textlength(dai_str, font=font_bold)
             draw.text((x1 - chi_pad - tw, hy0 + _px(18)), dai_str, fill=style.ink_muted, font=font_bold)
 
-        icon = _chi_icon(c_id, can_chi, size=icon_sz)
+        icon = _chi_icon(c_id, can_chi, size=icon_sz, locale=locale)
         icon_x = x0 + (style.cell - icon_sz) // 2
         icon_y = y0 + _px(10) + top_pad
         if is_corner:
@@ -1458,7 +1476,7 @@ def generate_laso_image(
     chi_stride = _px(72)
     for i, chi in enumerate(CHI_ORDER):
         key = CHI_ASSET_KEYS[chi]
-        tile = _load_asset(f"chi_{key}.png")
+        tile = _load_asset(_chi_asset_name(key, locale, gold=False))
         ix = ox + _px(8) + i * chi_stride
         if tile:
             tile = _fit_square(tile, _px(62), pad=_px(3))

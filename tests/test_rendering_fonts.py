@@ -248,6 +248,36 @@ def test_traditional_palette_smoke():
         assert footer_px[0] < 80 and footer_px[2] >= footer_px[0]
 
 
+def test_mao_chi_asset_slug_by_locale():
+    from tuvi_mcp._rendering import _chi_asset_name, _chi_asset_slug
+
+    assert _chi_asset_slug("mao", "vi") == "meo"
+    assert _chi_asset_slug("mao", "en") == "mao"
+    assert _chi_asset_slug("ngo", "vi") == "ngo"
+    assert _chi_asset_name("mao", "vi", gold=False) == "chi_meo.png"
+    assert _chi_asset_name("mao", "en", gold=False) == "chi_mao.png"
+    assert _chi_asset_name("mao", "vi", gold=True) == "chi_gold_meo.png"
+
+
+def test_meo_cat_assets_bundled():
+    from tuvi_mcp._rendering import _load_asset
+
+    _load_asset.cache_clear()
+    assert _load_asset("chi_meo.png") is not None
+    assert _load_asset("chi_gold_meo.png") is not None
+
+
+def test_mao_palace_icon_differs_vi_vs_en():
+    """Vietnamese charts use cat tile for Mão; other locales use rabbit."""
+    from tuvi_mcp._rendering import _chi_icon, _load_asset
+
+    _load_asset.cache_clear()
+    vi = _chi_icon(4, "Kỷ Mão", size=48, locale="vi")
+    en = _chi_icon(4, "Kỷ Mão", size=48, locale="en")
+    assert vi is not None and en is not None
+    assert vi.tobytes() != en.tobytes()
+
+
 def test_chi_icon_is_circular_without_square_frame():
     """Zodiac tiles crop to the round medallion; square gold card frame is gone."""
     from tuvi_mcp._rendering import _chi_icon, _load_asset
