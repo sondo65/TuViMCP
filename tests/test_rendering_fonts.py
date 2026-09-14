@@ -479,14 +479,121 @@ def test_vietnamese_thien_ban_columns_keep_gutter():
     left_val_w = max(draw.textlength(str(v), font=font_v) for _, v in left)
     right_lab_w = max(draw.textlength(k, font=font_k) for k, _ in right)
     right_val_w = max(draw.textlength(str(v), font=font_v) for _, v in right)
+    year_val_w = draw.textlength(right[-1][1], font=font_v)
+    year_row_w = right_lab_w + lab_gap + year_val_w
+    seal_sz, seal_m = _px(110), _px(14)
+    seal_x = cx1 - seal_m - seal_sz
+    seal_limit = seal_x - _px(10)
     left_end, right_x, gutter = _thien_ban_pack(
-        left_x, left_lab_w, left_val_w, right_lab_w, right_val_w, lab_gap, cx1
+        left_x,
+        left_lab_w,
+        left_val_w,
+        right_lab_w,
+        right_val_w,
+        lab_gap,
+        cx1,
+        seal_limit=seal_limit,
+        year_row_w=year_row_w,
     )
     assert right_x >= left_end + gutter
-    # Packed against inner gold, not pulled left to the seal (that caused VI overlap).
+    # Packed against inner gold, then clamped so the year row clears the seal.
     right_edge = cx1 - _px(16)
     packed = right_edge - (right_lab_w + lab_gap + right_val_w)
-    assert abs(right_x - packed) < 0.51
+    expected = min(packed, seal_limit - year_row_w)
+    if expected < left_end + gutter:
+        expected = left_end + gutter
+    assert abs(right_x - expected) < 0.51
+
+
+def test_chinese_view_year_shares_right_column_x():
+    """ZH 推运年 stays on the packed column x; stamp_clear is a no-op after clamp."""
+    from PIL import Image, ImageDraw
+
+    from tuvi_mcp._rendering import (
+        STYLE,
+        _px,
+        _resolve_style,
+        _stamp_clear_xy,
+        _thien_ban_pack,
+        get_font,
+        t,
+    )
+
+    s = _resolve_style(STYLE)
+    ox = s.pad
+    cx0, cx1 = ox + s.cell, ox + 3 * s.cell
+    cy1 = ox + 3 * s.cell
+    draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    font_k = get_font(_px(20), False, locale="zh")
+    font_v = get_font(_px(22), True, locale="zh")
+    left = [
+        (t("zh", "Dương lịch", section="ui"), "14/9/1996"),
+        (t("zh", "Âm lịch", section="ui"), "2/8/1996"),
+        (t("zh", "Giờ sinh", section="ui"), "丁 卯"),
+        (t("zh", "Năm sinh", section="ui"), "丙 子"),
+        (t("zh", "Âm dương", section="ui"), "阳 男"),
+    ]
+    right = [
+        (t("zh", "Bản mệnh", section="ui"), "洞下水"),
+        (t("zh", "Hành cục", section="ui"), "金四局 (1)"),
+        (t("zh", "Chủ mệnh", section="ui"), "破军"),
+        (t("zh", "Chủ thân", section="ui"), "铃星"),
+        (t("zh", "Năm xem", section="ui"), "2026"),
+    ]
+    lab_gap = _px(10)
+    left_x = cx0 + _px(18)
+    left_lab_w = max(draw.textlength(k, font=font_k) for k, _ in left)
+    left_val_w = max(draw.textlength(str(v), font=font_v) for _, v in left)
+    right_lab_w = max(draw.textlength(k, font=font_k) for k, _ in right)
+    right_val_w = max(draw.textlength(str(v), font=font_v) for _, v in right)
+    year_val_w = draw.textlength(right[-1][1], font=font_v)
+    year_row_w = right_lab_w + lab_gap + year_val_w
+    seal_sz, seal_m = _px(110), _px(14)
+    seal_x = cx1 - seal_m - seal_sz
+    seal_y = cy1 - seal_m - seal_sz
+    seal_limit = seal_x - _px(10)
+    left_end, right_x, gutter = _thien_ban_pack(
+        left_x,
+        left_lab_w,
+        left_val_w,
+        right_lab_w,
+        right_val_w,
+        lab_gap,
+        cx1,
+        seal_limit=seal_limit,
+        year_row_w=year_row_w,
+    )
+    vx = right_x + right_lab_w + lab_gap
+    # Year row overlaps seal band; after pack clamp, stamp_clear must not shift.
+    ry = seal_y + _px(20)
+    rx2, vx2 = _stamp_clear_xy(
+        right_x, vx, year_val_w, ry, seal_x, seal_y, left_end + gutter, right_lab_w, lab_gap
+    )
+    assert (rx2, vx2) == (right_x, vx)
+    assert vx2 + year_val_w <= seal_limit + 0.51
+
+
+def test_aux_right_column_x_anchors_to_right_pad():
+    """Widest right-aux star ends at x1 - pad_x; oversized names stay at mid-cell."""
+    from PIL import Image, ImageDraw
+
+    from tuvi_mcp._rendering import STYLE, _aux_right_column_x, _px, _resolve_style, get_font
+
+    s = _resolve_style(STYLE)
+    draw = ImageDraw.Draw(Image.new("RGB", (8, 8)))
+    font = get_font(_px(16), True, locale="zh")
+    x0, x1, pad_x = 0, s.cell, _px(14)
+    names = [("劫杀", "#000"), ("流年文曲", "#000"), ("天虚 (得)", "#000")]
+    sat_x = _aux_right_column_x(draw, font, names, x0, x1, s.cell, pad_x)
+    widest = max(draw.textlength(nm, font=font) for nm, _c in names)
+    assert abs((sat_x + widest) - (x1 - pad_x)) < 0.51
+    mid = x0 + s.cell // 2 + _px(6)
+    assert sat_x >= mid - 0.51
+
+    huge = [("WWWWWWWWWWWWWWWWWWWWWWWWWWWW", "#000")]
+    clamped = _aux_right_column_x(draw, font, huge, x0, x1, s.cell, pad_x)
+    assert abs(clamped - mid) < 0.51
+    assert _aux_right_column_x(draw, font, [], x0, x1, s.cell, pad_x) == mid
 
 
 def test_chu_than_stays_on_right_column_x():

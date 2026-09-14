@@ -222,6 +222,16 @@ def _palace_stack_spacing(
     return floor + bump, floor + bump, gap
 
 
+def _aux_right_column_x(draw, font, names, x0, x1, cell, pad_x, gutter=None):
+    """Anchor the right aux column to the cell's right padding; never cross mid-cell."""
+    gutter = _px(6) if gutter is None else gutter
+    mid = x0 + cell // 2 + gutter
+    if not names:
+        return mid
+    widest = max(draw.textlength(nm, font=font) for nm, _c in names)
+    return max(mid, x1 - pad_x - widest)
+
+
 def _resolve_style(style: LasoStyle = STYLE) -> LasoStyle:
     """Physical canvas style: logical geometry × scale (sharper zoom)."""
     if style.scale <= 1:
@@ -881,13 +891,21 @@ def _thien_ban_pack(
     right_val_w: float,
     lab_gap: int,
     cx1: int,
+    seal_limit: float | None = None,
+    year_row_w: float | None = None,
 ) -> tuple[float, float, int]:
-    """Pack the right column against inner gold. Returns (left_end, right_x, gutter)."""
+    """Pack the right column against inner gold. Returns (left_end, right_x, gutter).
+
+    When ``seal_limit`` and ``year_row_w`` are set, clamp so the year row clears
+    the red seal while every right-hand label still shares one x.
+    """
     right_edge = cx1 - _px(16)
     right_block = right_lab_w + lab_gap + right_val_w
     right_x = right_edge - right_block
     left_end = left_x + left_lab_w + lab_gap + left_val_w
     gutter = _px(16)
+    if seal_limit is not None and year_row_w is not None:
+        right_x = min(right_x, seal_limit - year_row_w)
     if right_x < left_end + gutter:
         right_x = left_end + gutter
     return left_end, right_x, gutter
@@ -1210,10 +1228,11 @@ def generate_laso_image(
 
         # Header: index/chi first, circular medallion below, palace title last
         # (never overlay the red title — especially tight in the four corner cung)
+        pad_x = _px(14)
         is_corner = (col in (0, 3) and row in (0, 3))
         icon_sz = _px(42) if is_corner else _px(48)
-        idx_x = x0 + (_px(18) if is_corner and col == 0 else _px(6))
-        chi_pad = _px(20) if is_corner and col == 3 else _px(8)
+        idx_x = x0 + (pad_x + _px(6) if is_corner and col == 0 else pad_x)
+        chi_pad = pad_x + _px(8) if is_corner and col == 3 else pad_x
         hy0 = y0 + _px(4) + top_pad
         draw.text((idx_x, hy0), str(c_id), fill=style.ink_muted, font=font_sm)
         chi_label = _display_case(locale, f"{can_abbr}{t(locale, chi_name, section='chi') if chi_name else ''}")
@@ -1292,11 +1311,11 @@ def generate_laso_image(
         for nm, colr in cat:
             if y_left + aux_lh > footer_limit:
                 break
-            draw.text((x0 + _px(8), y_left), nm, fill=colr, font=font_bold)
+            draw.text((x0 + pad_x, y_left), nm, fill=colr, font=font_bold)
             y_left += aux_lh
 
         y_right = aux_top
-        sat_x = x0 + style.cell // 2 + _px(6)
+        sat_x = _aux_right_column_x(draw, font_bold, sat, x0, x1, style.cell, pad_x)
         for nm, colr in sat:
             if y_right + aux_lh > footer_limit:
                 break
@@ -1308,14 +1327,14 @@ def generate_laso_image(
             thang = pattern.format(n=month_idx)
         except (KeyError, IndexError, ValueError):
             thang = pattern.replace("{n}", str(month_idx))
-        draw.text((x0 + _px(8), footer_y), thang, fill=style.ink_muted, font=font_sm)
+        draw.text((x0 + pad_x, footer_y), thang, fill=style.ink_muted, font=font_sm)
         if trang:
             tw = draw.textlength(trang, font=font_reg)
             draw.text((x0 + style.cell / 2 - tw / 2, footer_y), trang, fill=style.ink, font=font_reg)
         if hanh:
             hanh_disp = t(locale, hanh, section="elements")
             tw = draw.textlength(hanh_disp, font=font_sm)
-            draw.text((x1 - _px(12) - tw, footer_y), hanh_disp, fill=style.ink_muted, font=font_sm)
+            draw.text((x1 - pad_x - tw, footer_y), hanh_disp, fill=style.ink_muted, font=font_sm)
 
     draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=font_bold, style=style, locale=locale)
 
@@ -1419,8 +1438,23 @@ def generate_laso_image(
     right_lab_w = max(draw.textlength(k, font=font_k) for k, _ in right)
     left_val_w = max((draw.textlength(str(v), font=font_v) for _, v in left), default=0)
     right_val_w = max((draw.textlength(str(v), font=font_v) for _, v in right), default=0)
+    year_i = len(right) - 1
+    year_val_w = draw.textlength(str(right[year_i][1]), font=font_v)
+    year_row_w = right_lab_w + lab_gap + year_val_w
+    year_y = data_y + year_i * row_h
+    seal_limit = None
+    if year_y + _px(22) > seal_y:
+        seal_limit = seal_x - _px(10)
     left_end, right_x, gutter = _thien_ban_pack(
-        left_x, left_lab_w, left_val_w, right_lab_w, right_val_w, lab_gap, cx1
+        left_x,
+        left_lab_w,
+        left_val_w,
+        right_lab_w,
+        right_val_w,
+        lab_gap,
+        cx1,
+        seal_limit=seal_limit,
+        year_row_w=year_row_w if seal_limit is not None else None,
     )
     seal = _load_asset("seal_red.png")
     if seal:
@@ -1442,9 +1476,8 @@ def generate_laso_image(
         draw.text((left_x + left_lab_w + lab_gap, ly), str(v), fill=style.ink, font=font_v)
         ly += row_h
 
-    # Keep every right-hand label on the same x. Only Năm xem / View year
-    # may slide so the year digits stay off the seal; Chủ thân must not indent.
-    year_i = len(right) - 1
+    # Every right-hand label shares one x (packed to clear the seal via year_row_w).
+    # _stamp_clear_xy remains a fallback if the left-gutter floor blocks that clamp.
     ry = data_y
     for i, (k, v) in enumerate(right):
         val = str(v)
