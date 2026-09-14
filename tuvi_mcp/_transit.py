@@ -12,11 +12,90 @@ from __future__ import annotations
 from ._chart import get_horoscope_chart
 from ._engine.AmDuong import dichCung, thienCan, timThienMa
 from ._input import (
+    BRANCH_NAMES,
     CAN_NAMES,
+    HOUR_BRANCH_MAP,
     parse_hour,
     validate_birth_parameters,
     validate_transit_period,
 )
+
+
+def chi_for_year(year: int) -> str:
+    """Earthly branch name for a calendar year (e.g. 2026 → Ngọ)."""
+    return BRANCH_NAMES[(year + 8) % 12 + 1]
+
+
+def nguyet_han_cung_so(
+    tieu_han_cung_so: int,
+    birth_lunar_month: int,
+    birth_hour_branch: int,
+    target_month: int,
+) -> int:
+    """Natal palace (1–12) hosting nguyệt hạn for [target_month].
+
+    Classical an sao: from tiểu hạn as tháng Giêng base, count reverse by birth
+    lunar month, forward by birth hour branch, then forward target_month−1.
+    """
+    p_tieu_han = tieu_han_cung_so - 1
+    p_month = (p_tieu_han - birth_lunar_month + birth_hour_branch + target_month - 1) % 12
+    return p_month + 1
+
+
+def tieu_han_cung_so_for_year(dia_ban: list, year: int) -> int | None:
+    """cung_so of the palace whose tieu_han matches the year's earthly branch."""
+    chi = chi_for_year(year)
+    for cung in dia_ban:
+        if cung.get("tieu_han") == chi:
+            return cung.get("cung_so")
+    return None
+
+
+def birth_hour_branch_from_thien_ban(thien_ban: dict) -> int | None:
+    """1-indexed hour branch (1=Tý … 12=Hợi) from chart thien_ban fields."""
+    chi = (thien_ban.get("chi_gio_sinh") or "").strip()
+    if chi:
+        key = chi.lower()
+        for name, idx in HOUR_BRANCH_MAP.items():
+            if name == key:
+                return idx
+    gio = (thien_ban.get("gio_sinh") or "").strip()
+    if gio:
+        return parse_hour(gio)
+    return None
+
+
+def birth_lunar_month_from_thien_ban(thien_ban: dict) -> int | None:
+    """Birth lunar month (1–12) from thien_ban.ngay_am (dd/mm/yyyy)."""
+    ngay_am = (thien_ban.get("ngay_am") or "").strip()
+    parts = ngay_am.split("/")
+    if len(parts) >= 2:
+        month = int(parts[1])
+        if 1 <= month <= 12:
+            return month
+    return None
+
+
+def nguyet_han_month_by_cung(
+    dia_ban: list,
+    *,
+    current_year: int,
+    birth_lunar_month: int,
+    birth_hour_branch: int,
+) -> dict[int, int]:
+    """Map cung_so (1–12) → lunar month (1–12) for nguyệt hạn in [current_year]."""
+    tieu_so = tieu_han_cung_so_for_year(dia_ban, current_year)
+    if tieu_so is None:
+        return {}
+    if not (1 <= birth_lunar_month <= 12 and 1 <= birth_hour_branch <= 12):
+        return {}
+    mapping: dict[int, int] = {}
+    for month in range(1, 13):
+        cung_so = nguyet_han_cung_so(
+            tieu_so, birth_lunar_month, birth_hour_branch, month
+        )
+        mapping[cung_so] = month
+    return mapping
 
 
 def calculate_transit_stars(current_year: int) -> list:
@@ -41,8 +120,6 @@ def calculate_transit_stars(current_year: int) -> list:
     # Lưu Thiên Khốc and Lưu Thiên Hư: start from Ngọ (7)
     luu_thien_khoc = dichCung(7, -chi_nam + 1)
     luu_thien_hu = dichCung(7, chi_nam - 1)
-
-    from ._input import BRANCH_NAMES
 
     return [
         {"name": "Lưu Thái Tuế", "cung_so": luu_thai_tue, "chi": BRANCH_NAMES[luu_thai_tue]},
@@ -84,8 +161,6 @@ def get_van_han_analysis(
     if "error" in chart:
         return chart
 
-    from ._input import BRANCH_NAMES
-
     # Extract birth lunar year/month and gender from chart data
     thien_ban = chart["thien_ban"]
     ngay_am_parts = thien_ban["ngay_am"].split("/")
@@ -120,14 +195,12 @@ def get_van_han_analysis(
     # 3. Identify active Nguyệt Hạn cung
     active_nguyet_han_cung = None
     if active_tieu_han_cung:
-        p_tieu_han = active_tieu_han_cung["cung_so"] - 1
-        m_birth = birth_lunar_month
-        h_birth = hour
-        m_target = current_month
-
-        p_month = (p_tieu_han - m_birth + h_birth + m_target - 1) % 12
-        s_month = p_month + 1
-
+        s_month = nguyet_han_cung_so(
+            active_tieu_han_cung["cung_so"],
+            birth_lunar_month,
+            hour,
+            current_month,
+        )
         for cung in chart["dia_ban"]:
             if cung["cung_so"] == s_month:
                 active_nguyet_han_cung = cung
@@ -183,4 +256,13 @@ def get_van_han_analysis(
     }
 
 
-__all__ = ["calculate_transit_stars", "get_van_han_analysis"]
+__all__ = [
+    "birth_hour_branch_from_thien_ban",
+    "birth_lunar_month_from_thien_ban",
+    "calculate_transit_stars",
+    "chi_for_year",
+    "get_van_han_analysis",
+    "nguyet_han_cung_so",
+    "nguyet_han_month_by_cung",
+    "tieu_han_cung_so_for_year",
+]

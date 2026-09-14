@@ -19,6 +19,11 @@ from typing import Optional
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from tuvi_mcp.i18n import t
+from tuvi_mcp._transit import (
+    birth_hour_branch_from_thien_ban,
+    birth_lunar_month_from_thien_ban,
+    nguyet_han_month_by_cung,
+)
 
 
 @dataclass(frozen=True)
@@ -1103,6 +1108,18 @@ def generate_laso_image(
     thien_ban = chart_data.get("thien_ban", {})
     dia_ban = list(chart_data.get("dia_ban", []))
 
+    month_by_cung: dict[int, int] = {}
+    if current_year:
+        birth_month = birth_lunar_month_from_thien_ban(thien_ban)
+        birth_hour = birth_hour_branch_from_thien_ban(thien_ban)
+        if birth_month is not None and birth_hour is not None:
+            month_by_cung = nguyet_han_month_by_cung(
+                dia_ban,
+                current_year=current_year,
+                birth_lunar_month=birth_month,
+                birth_hour_branch=birth_hour,
+            )
+
     m_cung = t_cung = None
     for cung in dia_ban:
         if cung.get("cung_chu") == "Mệnh":
@@ -1224,7 +1241,13 @@ def generate_laso_image(
         hanh = cung.get("hanh_cung", "")
         dai_han = cung.get("dai_han")
         dai_str = str(dai_han) if dai_han is not None else ""
-        month_idx = (c_id - 3) % 12 + 1
+        # Prefer classical nguyệt hạn month for the viewing year; fall back to
+        # static Dần=1 … Sửu=12 only when anchors/year are unavailable.
+        month_idx = (
+            month_by_cung[c_id]
+            if c_id in month_by_cung
+            else ((c_id - 3) % 12 + 1)
+        )
 
         # Header: index/chi first, circular medallion below, palace title last
         # (never overlay the red title — especially tight in the four corner cung)
