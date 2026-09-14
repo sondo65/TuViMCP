@@ -86,8 +86,8 @@ def post_generate(body: HoroscopeGenerateRequest, _claims: dict = Depends(requir
         chart = horoscope.chart()
 
         view_year = body.current_year if body.current_year is not None else datetime.now().year
-        temp_png_path = horoscope.render_chart(chart, year=view_year, locale=locale)
-        image_base64 = encode_png_base64(temp_png_path, delete_source=True)
+        png_bytes = horoscope.render_chart_bytes(chart, year=view_year, locale=locale)
+        image_base64 = encode_png_base64(png_bytes)
 
         return {
             "image_base64": image_base64,
@@ -152,5 +152,3 @@ def post_transit(body: HoroscopeTransitRequest, _claims: dict = Depends(require_
             code="HOROSCOPE_ENGINE_ERROR",
             detail=str(exc),
         )
-
-

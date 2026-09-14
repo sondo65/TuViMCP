@@ -84,14 +84,14 @@ def test_generate_omits_current_year_passes_system_year():
     captured = {}
     from tuvi_mcp import Horoscope
 
-    real_render = Horoscope.render_chart
+    real_render = Horoscope.render_chart_bytes
 
     def spy(self, chart=None, year=None, font_path=None, font_bold_path=None, locale=None, **kwargs):
         captured["year"] = year
         captured["locale"] = locale
-        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
+        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path, locale=locale)
 
-    with patch.object(Horoscope, "render_chart", spy):
+    with patch.object(Horoscope, "render_chart_bytes", spy):
         response = client.post("/v1/horoscope/generate", json=VALID_PAYLOAD)
 
     assert response.status_code == 200
@@ -99,19 +99,19 @@ def test_generate_omits_current_year_passes_system_year():
 
 
 def test_generate_passes_explicit_current_year_to_render():
-    """POST current_year is forwarded to render_chart as year."""
+    """POST current_year is forwarded to render_chart_bytes as year."""
     captured = {}
     from tuvi_mcp import Horoscope
 
-    real_render = Horoscope.render_chart
+    real_render = Horoscope.render_chart_bytes
 
     def spy(self, chart=None, year=None, font_path=None, font_bold_path=None, locale=None, **kwargs):
         captured["year"] = year
         captured["locale"] = locale
-        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
+        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path, locale=locale)
 
     payload = {**VALID_PAYLOAD, "current_year": 2027}
-    with patch.object(Horoscope, "render_chart", spy):
+    with patch.object(Horoscope, "render_chart_bytes", spy):
         response = client.post("/v1/horoscope/generate", json=payload)
 
     assert response.status_code == 200
@@ -137,13 +137,13 @@ def test_generate_horoscope_omitted_locale_is_vi_compatible():
     captured = {}
     from tuvi_mcp import Horoscope
 
-    real_render = Horoscope.render_chart
+    real_render = Horoscope.render_chart_bytes
 
     def spy(self, chart=None, year=None, font_path=None, font_bold_path=None, locale=None, **kwargs):
         captured["locale"] = locale
-        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path)
+        return real_render(self, chart, year=year, font_path=font_path, font_bold_path=font_bold_path, locale=locale)
 
-    with patch.object(Horoscope, "render_chart", spy):
+    with patch.object(Horoscope, "render_chart_bytes", spy):
         response = client.post("/v1/horoscope/generate", json=VALID_PAYLOAD)
 
     assert response.status_code == 200

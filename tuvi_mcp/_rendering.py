@@ -10,11 +10,12 @@ footer zodiac strip + Âm lịch.
 """
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 from dataclasses import dataclass, replace
 from functools import lru_cache
-from typing import Optional
+from typing import Optional, Union
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
@@ -299,6 +300,34 @@ def _load_asset(filename: str) -> Optional[Image.Image]:
     return im
 
 
+@lru_cache(maxsize=8)
+def _dragon_bg_faded(grid: int) -> Optional[Image.Image]:
+    """LANCZOS-scaled dragon watermark with fixed 0.36 alpha fade (immutable cache)."""
+    dragon_bg = _load_asset("dragon_bg.png")
+    if dragon_bg is None:
+        return None
+    dw = dragon_bg.resize((grid, grid), Image.Resampling.LANCZOS)
+    r, g, b, a = dw.split()
+    a = a.point(lambda v: int(v * 0.36))
+    return Image.merge("RGBA", (r, g, b, a))
+
+
+@lru_cache(maxsize=16)
+def _resized_corner(key: str, size: int) -> Optional[Image.Image]:
+    corner = _load_asset(f"corner_{key}.png")
+    if corner is None:
+        return None
+    return corner.resize((size, size), Image.Resampling.LANCZOS)
+
+
+@lru_cache(maxsize=256)
+def _fitted_asset(filename: str, size: int, pad: int) -> Optional[Image.Image]:
+    im = _load_asset(filename)
+    if im is None:
+        return None
+    return _fit_square(im, size, pad=pad)
+
+
 def _knockout_cream(im: Image.Image, min_luma: int = 198) -> Image.Image:
     """Flood-fill parchment/white from the tile edges so medallions/dragons keep only the art."""
     im = im.convert("RGBA")
@@ -550,15 +579,38 @@ def _circular_medallion(im: Image.Image, drop_caption: bool = True) -> Image.Ima
 
 
 def _paste_rgba(base: Image.Image, overlay: Optional[Image.Image], xy: tuple[int, int]) -> None:
+    """Alpha-composite ``overlay`` onto ``base`` at ``xy`` (region-only, not full canvas).
+
+    Matches legacy ``layer.paste(overlay, xy, overlay)`` + full ``alpha_composite``
+    semantics (paste-with-RGBA-mask), while allocating only the clipped bbox.
+    """
     if overlay is None:
         return
     if base.mode != "RGBA":
         base.paste(overlay, xy, overlay)
         return
-    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    layer.paste(overlay, xy, overlay)
-    composited = Image.alpha_composite(base, layer)
-    base.paste(composited)
+
+    x, y = xy
+    ow, oh = overlay.size
+    bw, bh = base.size
+
+    src_x0 = max(0, -x)
+    src_y0 = max(0, -y)
+    dst_x0 = max(0, x)
+    dst_y0 = max(0, y)
+    dst_x1 = min(bw, x + ow)
+    dst_y1 = min(bh, y + oh)
+    if dst_x0 >= dst_x1 or dst_y0 >= dst_y1:
+        return
+
+    src_x1 = src_x0 + (dst_x1 - dst_x0)
+    src_y1 = src_y0 + (dst_y1 - dst_y0)
+    cropped = overlay.crop((src_x0, src_y0, src_x1, src_y1))
+    region = base.crop((dst_x0, dst_y0, dst_x1, dst_y1))
+    # Preserve legacy paste-with-mask alpha (not raw alpha_composite of overlay).
+    layer = Image.new("RGBA", region.size, (0, 0, 0, 0))
+    layer.paste(cropped, (0, 0), cropped)
+    base.paste(Image.alpha_composite(region, layer), (dst_x0, dst_y0))
 
 
 def _fit_square(im: Image.Image, size: int, pad: int = 1) -> Image.Image:
@@ -573,25 +625,66 @@ def _fit_square(im: Image.Image, size: int, pad: int = 1) -> Image.Image:
     return canvas
 
 
-def _paste_rgba_outside(base: Image.Image, overlay: Optional[Image.Image], xy: tuple[int, int], hole: tuple[int, int, int, int]) -> None:
-    """Paste overlay, clearing any pixels that would land inside ``hole`` (palace grid)."""
+def _paste_rgba_outside(
+    base: Image.Image,
+    overlay: Optional[Image.Image],
+    xy: tuple[int, int],
+    hole: tuple[int, int, int, int],
+) -> None:
+    """Paste overlay, clearing any pixels that would land inside ``hole`` (palace grid).
+
+    Composites only the overlay bbox ∩ canvas (not a full-size layer), matching
+    legacy full-canvas paste-with-mask + hole mask semantics.
+    """
     if overlay is None:
         return
-    layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
-    layer.paste(overlay, xy, overlay)
-    mask = Image.new("L", base.size, 255)
-    ImageDraw.Draw(mask).rectangle(hole, fill=0)
+
+    x, y = xy
+    ow, oh = overlay.size
+    bw, bh = base.size
+
+    src_x0 = max(0, -x)
+    src_y0 = max(0, -y)
+    dst_x0 = max(0, x)
+    dst_y0 = max(0, y)
+    dst_x1 = min(bw, x + ow)
+    dst_y1 = min(bh, y + oh)
+    if dst_x0 >= dst_x1 or dst_y0 >= dst_y1:
+        return
+
+    src_x1 = src_x0 + (dst_x1 - dst_x0)
+    src_y1 = src_y0 + (dst_y1 - dst_y0)
+    cropped = overlay.crop((src_x0, src_y0, src_x1, src_y1))
+
+    rw, rh = dst_x1 - dst_x0, dst_y1 - dst_y0
+    layer = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+    layer.paste(cropped, (0, 0), cropped)
+
+    mask = Image.new("L", (rw, rh), 255)
+    hx0, hy0, hx1, hy1 = hole
+    ImageDraw.Draw(mask).rectangle(
+        (hx0 - dst_x0, hy0 - dst_y0, hx1 - dst_x0, hy1 - dst_y0),
+        fill=0,
+    )
     r, g, b, a = layer.split()
     layer = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a, mask)))
-    composited = Image.alpha_composite(base.convert("RGBA"), layer)
-    base.paste(composited)
+
+    region = base.convert("RGBA").crop((dst_x0, dst_y0, dst_x1, dst_y1))
+    base.paste(Image.alpha_composite(region, layer), (dst_x0, dst_y0))
+
 
 
 def get_font(size=12, bold=False, font_path=None, locale="vi"):
-    if font_path and isinstance(font_path, (str, os.PathLike)):
+    path_key = str(font_path) if font_path else ""
+    return _get_font_cached(int(size), bool(bold), path_key, str(locale or "vi"))
+
+
+@lru_cache(maxsize=128)
+def _get_font_cached(size: int, bold: bool, font_path: str, locale: str):
+    if font_path:
         try:
             if os.path.exists(font_path):
-                return ImageFont.truetype(str(font_path), size)
+                return ImageFont.truetype(font_path, size)
         except Exception:
             pass
 
@@ -750,16 +843,25 @@ def _chi_icon(
     gold: bool = False,
     locale: str = "vi",
 ) -> Optional[Image.Image]:
+    return _chi_icon_cached(int(cung_so), str(cung_ten or ""), int(size), bool(gold), str(locale or "vi"))
+
+
+@lru_cache(maxsize=128)
+def _chi_icon_cached(
+    cung_so: int,
+    cung_ten: str,
+    size: int,
+    gold: bool,
+    locale: str,
+) -> Optional[Image.Image]:
     key = _chi_key_for_cung(cung_so, cung_ten)
     if not key:
         return None
     name = _chi_asset_name(key, locale, gold=gold)
-    icon = _load_asset(name)
+    icon = _fitted_asset(name, size, 1)
     if icon is None and gold:
-        icon = _load_asset(_chi_asset_name(key, locale, gold=False))
-    if icon is None:
-        return None
-    return _fit_square(icon, size, pad=1)
+        icon = _fitted_asset(_chi_asset_name(key, locale, gold=False), size, 1)
+    return icon
 
 
 def dich_cung(cung_start, offset):
@@ -1102,8 +1204,13 @@ def generate_laso_image(
     font_path: str = None,
     font_bold_path: str = None,
     locale: str = "vi",
-) -> str:
-    """Render traditional square-ish lá số PNG (Stitch minh-họa style)."""
+    *,
+    as_bytes: bool = False,
+) -> Union[str, bytes]:
+    """Render traditional square-ish lá số PNG (Stitch minh-họa style).
+
+    :param as_bytes: When True, return PNG bytes (no temp file). Default returns a temp path.
+    """
     style = _resolve_style(STYLE)
     thien_ban = chart_data.get("thien_ban", {})
     dia_ban = list(chart_data.get("dia_ban", []))
@@ -1163,12 +1270,8 @@ def generate_laso_image(
     grid = style.cell * 4
 
     # Full-chart eastern dragon watermark (behind grid + text)
-    dragon_bg = _load_asset("dragon_bg.png")
-    if dragon_bg is not None:
-        dw = dragon_bg.resize((grid, grid), Image.Resampling.LANCZOS)
-        r, g, b, a = dw.split()
-        a = a.point(lambda v: int(v * 0.36))
-        dw = Image.merge("RGBA", (r, g, b, a))
+    dw = _dragon_bg_faded(grid)
+    if dw is not None:
         _paste_rgba(img, dw, (ox, oy))
 
     # Outer navy frame + gold inner line
@@ -1185,9 +1288,8 @@ def generate_laso_image(
         ("bl", (1, ch - corner_sz - 1)),
         ("br", (cw - corner_sz - 1, ch - corner_sz - 1)),
     ):
-        corner = _load_asset(f"corner_{key}.png")
+        corner = _resized_corner(key, corner_sz)
         if corner:
-            corner = corner.resize((corner_sz, corner_sz), Image.Resampling.LANCZOS)
             _paste_rgba_outside(img, corner, xy, hole)
 
     # Skip opaque cell fills so the dragon watermark shows through the grid.
@@ -1391,21 +1493,21 @@ def generate_laso_image(
     tw = draw.textlength(title, font=font_title)
     draw.text((ox + grid / 2 - tw / 2, title_y), title, fill=style.title, font=font_title)
 
-    bagua = _load_asset("bagua.png")
+    bagua = _fitted_asset("bagua.png", bagua_sz, _px(1))
     if bagua:
         _paste_rgba(
             img,
-            _fit_square(bagua, bagua_sz, pad=_px(1)),
+            bagua,
             (ox + style.cell * 2 - bagua_sz // 2, icon_y),
         )
 
-    dl = _load_asset("dragon_left.png")
-    dr = _load_asset("dragon_right.png")
+    dl = _fitted_asset("dragon_left.png", dragon_sz, _px(4))
+    dr = _fitted_asset("dragon_right.png", dragon_sz, _px(4))
     dragon_y = icon_y + (ornament_h - dragon_sz) // 2
     if dl:
-        _paste_rgba(img, _fit_square(dl, dragon_sz, pad=_px(4)), (cx0 + _px(18), dragon_y))
+        _paste_rgba(img, dl, (cx0 + _px(18), dragon_y))
     if dr:
-        _paste_rgba(img, _fit_square(dr, dragon_sz, pad=_px(4)), (cx1 - _px(18) - dragon_sz, dragon_y))
+        _paste_rgba(img, dr, (cx1 - _px(18) - dragon_sz, dragon_y))
 
     # Use font fallback for mixed-script names (e.g. "Nguyễn" on Chinese chart)
     fallback_fonts = [font_name]  # Locale primary font first
@@ -1479,11 +1581,11 @@ def generate_laso_image(
         seal_limit=seal_limit,
         year_row_w=year_row_w if seal_limit is not None else None,
     )
-    seal = _load_asset("seal_red.png")
+    seal = _fitted_asset("seal_red.png", seal_sz, _px(2))
     if seal:
         _paste_rgba(
             img,
-            _fit_square(seal, seal_sz, pad=_px(2)),
+            seal,
             (seal_x, cy1 - seal_m - seal_sz),
         )
     else:
@@ -1530,12 +1632,13 @@ def generate_laso_image(
 
     font_ft = get_font(_px(13), True, bold_path, locale=locale)
     chi_stride = _px(72)
+    footer_tile_sz = _px(62)
+    footer_tile_pad = _px(3)
     for i, chi in enumerate(CHI_ORDER):
         key = CHI_ASSET_KEYS[chi]
-        tile = _load_asset(_chi_asset_name(key, locale, gold=False))
+        tile = _fitted_asset(_chi_asset_name(key, locale, gold=False), footer_tile_sz, footer_tile_pad)
         ix = ox + _px(8) + i * chi_stride
         if tile:
-            tile = _fit_square(tile, _px(62), pad=_px(3))
             _paste_rgba(img, tile, (ix, fy0 + _px(8)))
         chi_disp = _display_case(locale, t(locale, chi, section="chi"))
         tw = draw.textlength(chi_disp, font=font_ft)
@@ -1574,9 +1677,14 @@ def generate_laso_image(
         draw.text((colon_x + _px(3), sy), full, fill="#F5E6C8", font=font_leg)
 
     safe = str(name_val).replace(" ", "_")
-    out = os.path.join(tempfile.gettempdir(), f"tuvi_chart_{safe}.png")
     flat = Image.new("RGBA", img.size, (*parchment_deep_rgb, 255))
-    Image.alpha_composite(flat, img).convert("RGB").save(
-        out, "PNG", dpi=(144, 144), compress_level=4
-    )
+    rgb = Image.alpha_composite(flat, img).convert("RGB")
+    buf = io.BytesIO()
+    rgb.save(buf, "PNG", dpi=(144, 144), compress_level=2)
+    png_bytes = buf.getvalue()
+    if as_bytes:
+        return png_bytes
+    out = os.path.join(tempfile.gettempdir(), f"tuvi_chart_{safe}.png")
+    with open(out, "wb") as fh:
+        fh.write(png_bytes)
     return out

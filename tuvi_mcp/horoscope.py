@@ -537,13 +537,40 @@ class Horoscope:
             chart = self.chart().to_dict()
         elif isinstance(chart, HoroscopeResult):
             chart = chart.to_dict()
-        return generate_laso_image(
+        path = generate_laso_image(
             chart,
             current_year=year,
             font_path=font_path,
             font_bold_path=font_bold_path,
             locale=locale,
+            as_bytes=False,
         )
+        return path  # type: ignore[return-value]
+
+    def render_chart_bytes(
+        self,
+        chart: HoroscopeResult | dict | None = None,
+        year: int | None = None,
+        font_path: str | None = None,
+        font_bold_path: str | None = None,
+        locale: str = "vi",
+    ) -> bytes:
+        """Render the chart as PNG bytes (no temp file). Used by the REST generate route."""
+        if year is None:
+            year = datetime.now().year
+        if chart is None:
+            chart = self.chart().to_dict()
+        elif isinstance(chart, HoroscopeResult):
+            chart = chart.to_dict()
+        data = generate_laso_image(
+            chart,
+            current_year=year,
+            font_path=font_path,
+            font_bold_path=font_bold_path,
+            locale=locale,
+            as_bytes=True,
+        )
+        return data  # type: ignore[return-value]
 
 
 __all__ = [
