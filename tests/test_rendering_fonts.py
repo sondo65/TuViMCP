@@ -635,3 +635,36 @@ def test_cung_badge_insets_lift_text_off_inner_gold():
 
     thin = _cung_badge_insets(5, rects, ox, oy, s, pad_v=pad_v)
     assert thin == {"top": 0, "bottom": 0, "left": 0, "right": 0}
+
+
+def test_giap_tuat_combines_tuan_triet_label():
+    """Giáp Tuất: Tuần and Triệt share Thân–Dậu → one 'Tuần-Triệt' badge label."""
+    from tuvi_mcp.horoscope import Horoscope
+    from tuvi_mcp._rendering import _tuan_triet_badge_size, _tuan_triet_seam_label, _px
+
+    h = Horoscope.from_birth(
+        name="Giáp Tuất", day=18, month=11, year=1994, hour=5, gender="Nam"
+    )
+    chart = h.chart().to_dict()
+    assert chart["thien_ban"]["can_nam"] == "Giáp"
+    assert chart["thien_ban"]["chi_nam"] == "Tuất"
+    by_id = {c["cung_so"]: c for c in chart["dia_ban"]}
+    for i in (9, 10):
+        assert by_id[i]["tuan_trung"] is True
+        assert by_id[i]["triet_lo"] is True
+
+    label = _tuan_triet_seam_label(by_id[9], by_id[10], locale="vi")
+    assert label == "Tuần-Triệt"
+    bw, bh = _tuan_triet_badge_size(combined=True)
+    assert bw == _px(110)
+    assert bh == _px(28)
+
+    # Separate flags still produce single-word labels
+    assert _tuan_triet_seam_label(
+        {"tuan_trung": True, "triet_lo": False},
+        {"tuan_trung": True, "triet_lo": False},
+    ) == "Tuần"
+    assert _tuan_triet_seam_label(
+        {"tuan_trung": False, "triet_lo": True},
+        {"tuan_trung": False, "triet_lo": True},
+    ) == "Triệt"

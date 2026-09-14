@@ -319,6 +319,13 @@ def test_late_ty_hour_shift():
     assert chart_lunar["thien_ban"]["can_ngay"] == "Canh"
     assert chart_lunar["thien_ban"]["chi_ngay"] == "Thìn"
 
+    # 2b. Lunar birth at a normal hour must still show converted solar date
+    chart_lunar_normal = tuvi_calculator.get_horoscope_chart(
+        name="Test Lunar Normal", day=8, month=4, year=2024, hour_val="10:00", gender_val="Nam", is_solar=False
+    )
+    assert chart_lunar_normal["thien_ban"]["ngay_duong"] == "15/5/2024"
+    assert chart_lunar_normal["thien_ban"]["ngay_am"] == "8/4/2024"
+
     # 3. Test branch-based inputs (should NOT shift day even if it has labels containing hours)
     for branch_input in ("Tý", "giờ Tý", "Tý (23h - 1h)", 1):
         chart_branch = tuvi_calculator.get_horoscope_chart(

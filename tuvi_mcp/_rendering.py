@@ -955,13 +955,39 @@ def _tuan_triet_seams(dia_ban) -> list[tuple[int, int]]:
     return seams
 
 
+def _tuan_triet_seam_label(c1, c2, locale="vi") -> str | None:
+    """Return the badge label for a Tuần/Triệt seam pair, or None if inactive."""
+    has_tuan = bool(c1.get("tuan_trung") and c2.get("tuan_trung"))
+    has_triet = bool(c1.get("triet_lo") and c2.get("triet_lo"))
+    if has_tuan and has_triet:
+        return t(locale, "Tuần-Triệt", section="ui")
+    if has_tuan:
+        return t(locale, "Tuần", section="ui")
+    if has_triet:
+        return t(locale, "Triệt", section="ui")
+    return None
+
+
+def _tuan_triet_badge_size(combined: bool = False) -> tuple[int, int]:
+    """Single-flag badges stay compact; combined Tuần-Triệt needs more width."""
+    badge_h = _px(28)
+    return (_px(110) if combined else _px(76)), badge_h
+
+
 def _tuan_triet_badge_rects(
-    dia_ban, ox: int, oy: int, badge_w: int, badge_h: int, style: LasoStyle
+    dia_ban, ox: int, oy: int, badge_w: int, badge_h: int, style: LasoStyle, locale="vi"
 ) -> list[tuple[float, float, float, float]]:
     rects = []
-    hw, hh = badge_w / 2, badge_h / 2
+    by_id = {c["cung_so"]: c for c in dia_ban}
     for a, b in _tuan_triet_seams(dia_ban):
-        bx, by, _ = _tuan_triet_anchor(a, b, ox, oy, badge_w, badge_h, style)
+        c1, c2 = by_id.get(a), by_id.get(b)
+        if not c1 or not c2:
+            continue
+        has_tuan = bool(c1.get("tuan_trung") and c2.get("tuan_trung"))
+        has_triet = bool(c1.get("triet_lo") and c2.get("triet_lo"))
+        bw, bh = _tuan_triet_badge_size(combined=has_tuan and has_triet)
+        bx, by, _ = _tuan_triet_anchor(a, b, ox, oy, bw, bh, style)
+        hw, hh = bw / 2, bh / 2
         rects.append((bx - hw, by - hh, bx + hw, by + hh))
     return rects
 
@@ -996,31 +1022,22 @@ def _cung_badge_insets(
 
 def draw_tuan_triet(draw, dia_ban, ox, oy, font_bold=None, style: LasoStyle = STYLE, locale="vi"):
     font = get_font(_px(16), True, locale=locale)
-    badge_w, badge_h = _px(76), _px(28)
     cw, ch = _canvas_size(style)
     by_id = {c["cung_so"]: c for c in dia_ban}
     for c1_id, c2_id in TUAN_TRIET_PAIRS:
         c1, c2 = by_id.get(c1_id), by_id.get(c2_id)
         if not c1 or not c2:
             continue
-        labels = []
-        if c1.get("tuan_trung") and c2.get("tuan_trung"):
-            labels.append(t(locale, "Tuần", section="ui"))
-        if c1.get("triet_lo") and c2.get("triet_lo"):
-            labels.append(t(locale, "Triệt", section="ui"))
-        if not labels:
+        lab = _tuan_triet_seam_label(c1, c2, locale=locale)
+        if not lab:
             continue
-        bx, by, edge = _tuan_triet_anchor(c1_id, c2_id, ox, oy, badge_w, badge_h, style)
-        for i, lab in enumerate(labels):
-            cx, cy = bx, by
-            if i:
-                if edge in ("top", "center-bottom"):
-                    cx += badge_w + _px(6)
-                else:
-                    cy += badge_h + _px(6)
-            cx = max(badge_w // 2 + 1, min(cw - badge_w // 2 - 1, cx))
-            cy = max(badge_h // 2 + 1, min(ch - badge_h // 2 - 1, cy))
-            draw_badge(draw, cx, cy, lab, badge_w, badge_h, font=font, style=style, locale=locale)
+        has_tuan = bool(c1.get("tuan_trung") and c2.get("tuan_trung"))
+        has_triet = bool(c1.get("triet_lo") and c2.get("triet_lo"))
+        badge_w, badge_h = _tuan_triet_badge_size(combined=has_tuan and has_triet)
+        bx, by, _edge = _tuan_triet_anchor(c1_id, c2_id, ox, oy, badge_w, badge_h, style)
+        cx = max(badge_w // 2 + 1, min(cw - badge_w // 2 - 1, bx))
+        cy = max(badge_h // 2 + 1, min(ch - badge_h // 2 - 1, by))
+        draw_badge(draw, cx, cy, lab, badge_w, badge_h, font=font, style=style, locale=locale)
 
 
 def draw_lines_behind_center(draw, m_cung, t_cung, ox, oy, style: LasoStyle = STYLE):

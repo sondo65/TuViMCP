@@ -124,7 +124,7 @@ def get_horoscope_chart(
     hour = parse_hour(hour_val)
     gender = parse_gender(gender_val)
 
-    calc_day, calc_month, calc_year, orig_solar_str, is_late_ty = adjust_date_for_late_ty(
+    calc_day, calc_month, calc_year, orig_solar_str, _is_late_ty = adjust_date_for_late_ty(
         day, month, year, hour_val, is_solar, timezone
     )
 
@@ -162,7 +162,7 @@ def get_horoscope_chart(
         "ten": tb.ten,
         "gioi_tinh": tb.namNu,
         "ngay_duong": orig_solar_str
-        if (is_late_ty and orig_solar_str)
+        if orig_solar_str
         else f"{tb.ngayDuong}/{tb.thangDuong}/{tb.namDuong}",
         "ngay_am": f"{tb.ngayAm}/{tb.thangAm}/{tb.namAm}",
         "gio_sinh": tb.gioSinh,
