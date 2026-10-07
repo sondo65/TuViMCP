@@ -29,7 +29,7 @@ REST `POST /v1/auspicious` accepts the same optional `menh` field.
 | `ngay_hoang_dao` | Hoàng Đạo / Hắc Đạo evaluation |
 | `truc_ngay` | Day's Trực (12 Trực) |
 | `nhi_thap_bat_tu` | Day's Tú (28 Tú) |
-| `huong_xuat_hanh` | Auspicious travel directions |
+| `huong_xuat_hanh` | Travel directions. Go toward: `hy_than`, `tai_than`, `phuc_than`, `duong_quy_than`, `am_quy_than`. Avoid: `hac_than` (Hạc Thần); empty with `hac_than_tren_troi: true` on the 16 days (Quý Tỵ – Mậu Thân) it is in heaven and no direction is taboo |
 | `gio_hoang_dao` | Auspicious hours |
 | `tiet_khi_hien_tai` | Current solar term (Tiết Khí) |
 | `tiet_khi_tiep_theo` | Next solar term |

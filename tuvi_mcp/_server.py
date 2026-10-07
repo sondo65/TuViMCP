@@ -267,7 +267,8 @@ def get_auspicious_info(
     - `ngay_hoang_dao` (Sao Hoàng Đạo/Hắc Đạo, Cát/Hung)
     - `truc_ngay` (Tên Trực, Cát/Hung, Lời khuyên cổ truyền)
     - `nhi_thap_bat_tu` (Tên Sao, Động vật, Cát/Hung)
-    - `huong_xuat_hanh` (Hỷ Thần, Tài Thần, Phúc Thần, Dương/Âm Quý Thần)
+    - `huong_xuat_hanh` (hướng nên đi: Hỷ Thần, Tài Thần, Phúc Thần, Dương/Âm Quý Thần;
+      hướng nên tránh: `hac_than`, rỗng khi `hac_than_tren_troi` = true)
     - `gio_hoang_dao` (12 Giờ Canh Chi, Khung giờ, Sao Hoàng Đạo/Hắc Đạo, Cát/Hung)
     - `ngu_hanh` (can/chi, nạp âm, quan hệ; with menh also quan hệ mệnh)
     - `ngay_ky` (pham_ky, items, viec_ky)

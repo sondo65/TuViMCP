@@ -286,6 +286,31 @@ def translate_direction(zh_dir: str) -> str:
     return DIRECTION_MAP.get(zh_dir.strip(), zh_dir)
 
 
+# Hạc Thần (鹤神): (start Lục Thập Hoa Giáp index, length in days, direction).
+# Corner directions hold 6 days, cardinal ones 5; Quý Tỵ (29) .. Mậu Thân (44)
+# the spirit is in heaven (16 days) and no direction is taboo.
+_HAC_THAN_SEGMENTS = (
+    (45, 6, "Đông Bắc"),
+    (51, 5, "Chính Đông"),
+    (56, 6, "Đông Nam"),
+    (2, 5, "Chính Nam"),
+    (7, 6, "Tây Nam"),
+    (13, 5, "Chính Tây"),
+    (18, 6, "Tây Bắc"),
+    (24, 5, "Chính Bắc"),
+)
+
+
+def hac_than_direction(day_jia_zi_index: int) -> str | None:
+    """Direction to avoid (Hạc Thần) for a day, or None while it is in heaven."""
+    if not 0 <= day_jia_zi_index < 60:
+        return None
+    for start, length, direction in _HAC_THAN_SEGMENTS:
+        if (day_jia_zi_index - start) % 60 < length:
+            return direction
+    return None
+
+
 _HANH_LETTER = {
     "Kim": "K",
     "Mộc": "M",
@@ -559,12 +584,17 @@ def get_auspicious_details(
             tiet_khi_tiep_theo = f"{n_name} (vào {n_time})"
 
         # Hướng xuất hành (Thần Hướng)
+        from ._lunar_calendar.util.LunarUtil import LunarUtil
+
+        hac_than = hac_than_direction(LunarUtil.getJiaZiIndex(lunar.getDayInGanZhi()))
         huong_xuat_hanh = {
             "hy_than": translate_direction(lunar.getDayPositionXiDesc()),
             "tai_than": translate_direction(lunar.getDayPositionCaiDesc()),
             "phuc_than": translate_direction(lunar.getDayPositionFuDesc()),
             "duong_quy_than": translate_direction(lunar.getDayPositionYangGuiDesc()),
             "am_quy_than": translate_direction(lunar.getDayPositionYinGuiDesc()),
+            "hac_than": hac_than or "",
+            "hac_than_tren_troi": hac_than is None,
         }
 
         # Hourly breakdown (12 Giờ Hoàng Đạo / Hắc Đạo)
