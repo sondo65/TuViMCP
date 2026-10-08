@@ -118,6 +118,62 @@ def test_auspicious_no_authorization_returns_401(client_with_mocked_jwks):
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
 
 
+def test_auspicious_valid_service_key_returns_200(
+    client_with_mocked_jwks, monkeypatch
+):
+    monkeypatch.setenv("TUVI_MCP_SERVICE_KEY", "test-service-key")
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious",
+        json=AUSPICIOUS_PAYLOAD,
+        headers={"X-Service-Key": "test-service-key"},
+    )
+
+    assert response.status_code == 200
+    assert "ngay_hoang_dao" in response.json()
+
+
+def test_auspicious_wrong_service_key_returns_401(
+    client_with_mocked_jwks, monkeypatch
+):
+    monkeypatch.setenv("TUVI_MCP_SERVICE_KEY", "test-service-key")
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious",
+        json=AUSPICIOUS_PAYLOAD,
+        headers={"X-Service-Key": "wrong-key"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_auspicious_service_key_without_env_returns_401(
+    client_with_mocked_jwks, monkeypatch
+):
+    monkeypatch.delenv("TUVI_MCP_SERVICE_KEY", raising=False)
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious",
+        json=AUSPICIOUS_PAYLOAD,
+        headers={"X-Service-Key": "test-service-key"},
+    )
+
+    assert response.status_code == 401
+
+
+def test_calendar_rejects_service_key(client_with_mocked_jwks, monkeypatch):
+    monkeypatch.setenv("TUVI_MCP_SERVICE_KEY", "test-service-key")
+
+    response = client_with_mocked_jwks.post(
+        "/v1/calendar",
+        json=CALENDAR_PAYLOAD,
+        headers={"X-Service-Key": "test-service-key"},
+    )
+
+    assert response.status_code == 401
+
+
 def test_calendar_solar_to_lunar_aug_22_2026(
     client_with_mocked_jwks, ec_keys, valid_claims
 ):

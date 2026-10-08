@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends
 from tuvi_mcp._activity_catalog import is_valid_activity
 from tuvi_mcp._auspicious import get_auspicious_details
 from tuvi_mcp._input import coerce_timezone
-from tuvi_mcp.api.auth import require_supabase_jwt
+from tuvi_mcp.api.auth import require_supabase_jwt_or_service_key
 from tuvi_mcp.api.errors import raise_from_engine_error, raise_http_error
 from tuvi_mcp.api.schemas import AuspiciousRequest
 from tuvi_mcp.horoscope import AuspiciousResult
@@ -98,7 +98,7 @@ def _parse_calendar_date(day: int, month: int, year: int, *, field: str) -> date
 @router.post("/auspicious", response_model=None)
 def post_auspicious(
     body: AuspiciousRequest,
-    _claims: dict = Depends(require_supabase_jwt),
+    _claims: dict = Depends(require_supabase_jwt_or_service_key),
 ):
     """Evaluate Hoàng Đạo / Hắc Đạo, 12 Trực, 28 Tú, Tiết Khí, and hours.
 

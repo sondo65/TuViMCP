@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from dataclasses import dataclass
@@ -177,3 +178,21 @@ def require_supabase_jwt(authorization: Optional[str] = Header(default=None)) ->
     except Exception:
         # Catch JWKS / network errors from PyJWKClient
         raise UnauthorizedError("Token verification failed")
+
+
+def require_supabase_jwt_or_service_key(
+    authorization: Optional[str] = Header(default=None),
+    x_service_key: Optional[str] = Header(default=None),
+) -> dict:
+    """
+    Accept a server-to-server ``X-Service-Key`` (matching ``TUVI_MCP_SERVICE_KEY``)
+    or fall back to Supabase user JWT verification.
+    """
+    expected = os.getenv("TUVI_MCP_SERVICE_KEY", "").strip()
+    provided = (x_service_key or "").strip()
+    if expected and provided and hmac.compare_digest(
+        provided.encode("utf-8"), expected.encode("utf-8")
+    ):
+        return {"sub": "service", "role": "service"}
+
+    return require_supabase_jwt(authorization)
