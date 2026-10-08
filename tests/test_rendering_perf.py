@@ -15,7 +15,7 @@ from tuvi_mcp.horoscope import Horoscope
 # Golden RGB pixel hash for fixed birth chart (scale=2 traditional style).
 # Update only when intentional visual changes are approved.
 GOLDEN_CHART_RGB_SHA256 = (
-    "b63bc65314b76d8b873e9fca4adcf34fd3147432f3dd34d95c79dff2988b1f1d"
+    "15a22969af6bed2466efee811a4cf9a5a4f5925d452a5f3ff9b234e713fac8f6"
 )
 
 

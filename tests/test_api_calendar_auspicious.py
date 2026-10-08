@@ -230,6 +230,27 @@ def test_auspicious_with_activity_nhap_hoc(
     assert "cat_percent" in data["danh_gia_viec"]
 
 
+def test_auspicious_returns_language_neutral_activity_lists(
+    client_with_mocked_jwks, ec_keys, valid_claims
+):
+    private_key, _ = ec_keys
+    headers = _auth_headers(private_key, valid_claims)
+    payload = {"day": 7, "month": 10, "year": 2026, "activity": "xuat_hanh"}
+
+    response = client_with_mocked_jwks.post(
+        "/v1/auspicious", json=payload, headers=headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["truc_ngay"]["ma"] == "chap"
+    assert data["nhi_thap_bat_tu"]["ma"] == "sam"
+    assert isinstance(data["viec_nen_lam"], list)
+    avoid = {item["slug"]: item["nguon"] for item in data["viec_can_tranh"]}
+    assert "xuat_hanh" in avoid
+    assert data["danh_gia_viec"]["cat_percent"] < 40
+
+
 def test_auspicious_single_day_has_no_days_key(
     client_with_mocked_jwks, ec_keys, valid_claims
 ):

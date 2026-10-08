@@ -133,8 +133,9 @@ def test_aug_10_2026_cat_percent_near_competitor():
 
 
 def test_aug_21_2026_cat_percent_very_low():
+    # Hắc Đạo + Trực Nguy; Sao Cang on a Mão day is lifted by its exception.
     raw = get_auspicious_details(21, 8, 2026, activity="all")
-    assert raw["danh_gia_viec"]["cat_percent"] <= 5
+    assert raw["danh_gia_viec"]["cat_percent"] <= 20
 
 
 @pytest.mark.parametrize("month", range(1, 13))

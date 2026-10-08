@@ -6,6 +6,12 @@ Vietnamese Auspicious Days & Hours Evaluator.
 Wraps tuvi_mcp.lunar_calendar with a complete Vietnamese localization mapping layer.
 """
 
+from ._activity_rules import (
+    TRUC_CODES,
+    XIU_CODES,
+    hoang_dao_theo_thang,
+    ngoc_hap_taboos,
+)
 from .lunar_calendar import Lunar, Solar
 
 
@@ -14,10 +20,40 @@ def _score_activity_payload(
     day_hoang_dao: dict,
     xiu_info: dict,
     activity: str | None,
+    classification: dict,
 ) -> dict:
     from ._activity_scorer import score_activity
 
-    return score_activity(truc_info, day_hoang_dao, xiu_info, activity)
+    return score_activity(
+        truc_info,
+        day_hoang_dao,
+        xiu_info,
+        activity,
+        classification=classification,
+    )
+
+
+def _classify_activities(
+    truc_info: dict,
+    xiu_info: dict,
+    yi: list,
+    ji: list,
+    day_chi: str,
+    ngoc_hap: list[str],
+    cat_than: list[str],
+    hoang_dao_thang: str | None,
+) -> dict:
+    from ._activity_scorer import classify_day_activities
+
+    return classify_day_activities(
+        truc_info, xiu_info, yi, ji, day_chi, ngoc_hap, cat_than, hoang_dao_thang
+    )
+
+
+def _day_yi_ji(lunar) -> tuple[list[str], list[str]]:
+    yi = [s for s in (lunar.getDayYi() or []) if s and s != "Không"]
+    ji = [s for s in (lunar.getDayJi() or []) if s and s != "Không"]
+    return yi, ji
 
 # Can & Chi maps
 CAN_MAP = {
@@ -332,6 +368,20 @@ _HANH_NAME = {
     "O": "Thổ",
 }
 
+# Ngọc Hạp Thông Thư taboo days (see ``ngoc_hap_taboos``).
+NGOC_HAP_LORE: dict[str, str] = {
+    "Dương Công Kỵ Nhật": "Ngày Dương Công Kỵ: trăm sự đều kỵ, nên hoãn mọi việc lớn.",
+    "Thọ Tử": "Ngày Thọ Tử: trăm sự đều kỵ, nhất là việc hệ trọng.",
+    "Sát Chủ": "Ngày Sát Chủ: kỵ mọi việc, nhất là xây dựng, cưới hỏi, an táng.",
+    "Tam Nương": (
+        "Ngày Tam Nương: kỵ cưới hỏi, khai trương, xuất hành, động thổ, nhập trạch."
+    ),
+    "Nguyệt Kỵ": "Ngày Nguyệt Kỵ: kỵ xuất hành, khởi sự việc lớn.",
+    "Kim Thần Thất Sát": (
+        "Ngày Kim Thần Thất Sát: kỵ động thổ, xây sửa nhà, nhập trạch, an táng."
+    ),
+}
+
 # Short lore for common hung sát (Ngày Kỵ). Missing keys → empty string.
 XIONG_SHA_LORE: dict[str, str] = {
     "Nguyệt Kiến": (
@@ -465,10 +515,15 @@ def _build_ngu_hanh(lunar, day_gz: str, menh: str | None) -> dict:
     return out
 
 
-def _build_ngay_ky(lunar) -> dict:
-    raw_sha = [s for s in (lunar.getDayXiongSha() or []) if s and s != "Không"]
-    viec_ky = [s for s in (lunar.getDayJi() or []) if s and s != "Không"]
+def _day_xiong_sha(lunar) -> list[str]:
+    return [s for s in (lunar.getDayXiongSha() or []) if s and s != "Không"]
+
+
+def _build_ngay_ky(raw_sha: list[str], ngoc_hap: list[str], viec_ky: list[str]) -> dict:
     items = [
+        {"ten": name, "loi_khuyen": NGOC_HAP_LORE.get(name, "")}
+        for name in ngoc_hap
+    ] + [
         {"ten": name, "loi_khuyen": XIONG_SHA_LORE.get(name, "")}
         for name in raw_sha
     ]
@@ -561,11 +616,39 @@ def get_auspicious_details(
 
         # 12 Trực
         raw_truc = lunar.getZhiXing()
-        truc_info = TRUC_MAP.get(raw_truc, {"ten": raw_truc, "danh_gia": "N/A", "loi_khuyen": ""})
+        truc_info = dict(
+            TRUC_MAP.get(raw_truc, {"ten": raw_truc, "danh_gia": "N/A", "loi_khuyen": ""})
+        )
+        truc_info["ma"] = TRUC_CODES.get(raw_truc, "")
 
         # 28 Tú
         raw_xiu = lunar.getXiu()
-        xiu_info = XIU_MAP.get(raw_xiu, {"ten": raw_xiu, "dong_vat": "", "danh_gia": "N/A"})
+        xiu_info = dict(
+            XIU_MAP.get(raw_xiu, {"ten": raw_xiu, "dong_vat": "", "danh_gia": "N/A"})
+        )
+        xiu_info["ma"] = XIU_CODES.get(raw_xiu, "")
+
+        # Nghi / Kỵ of the day -> language-neutral activity slugs
+        yi, ji = _day_yi_ji(lunar)
+        day_chi = ZHI_MAP.get(lunar.getDayZhi(), lunar.getDayZhi())
+        raw_sha = _day_xiong_sha(lunar)
+        ngoc_hap = ngoc_hap_taboos(
+            ld,
+            lm,
+            CAN_MAP.get(lunar.getDayGan(), lunar.getDayGan()),
+            day_chi,
+            CAN_MAP.get(lunar.getYearGan(), lunar.getYearGan()),
+        )
+        activities = _classify_activities(
+            truc_info,
+            xiu_info,
+            yi,
+            ji,
+            day_chi,
+            ngoc_hap + raw_sha,
+            [s for s in (lunar.getDayJiShen() or []) if s and s != "Không"],
+            hoang_dao_theo_thang(lm, day_chi),
+        )
 
         # Tiết khí
         prev_jq = lunar.getPrevJieQi()
@@ -637,10 +720,12 @@ def get_auspicious_details(
             "huong_xuat_hanh": huong_xuat_hanh,
             "gio_hoang_dao": gio_hoang_dao,
             "danh_gia_viec": _score_activity_payload(
-                truc_info, day_hoang_dao, xiu_info, activity
+                truc_info, day_hoang_dao, xiu_info, activity, activities
             ),
+            "viec_nen_lam": activities["nen_lam"],
+            "viec_can_tranh": activities["can_tranh"],
             "ngu_hanh": _build_ngu_hanh(lunar, day_gz, menh),
-            "ngay_ky": _build_ngay_ky(lunar),
+            "ngay_ky": _build_ngay_ky(raw_sha, ngoc_hap, ji),
         }
     except Exception as e:
         return {"error": str(e)}

@@ -257,6 +257,8 @@ class AuspiciousResult:
     danh_gia_viec: dict | None = None
     ngu_hanh: dict | None = None
     ngay_ky: dict | None = None
+    viec_nen_lam: list | None = None
+    viec_can_tranh: list | None = None
 
     def to_dict(self) -> dict:
         out = {
@@ -277,6 +279,10 @@ class AuspiciousResult:
             out["ngu_hanh"] = self.ngu_hanh
         if self.ngay_ky is not None:
             out["ngay_ky"] = self.ngay_ky
+        if self.viec_nen_lam is not None:
+            out["viec_nen_lam"] = self.viec_nen_lam
+        if self.viec_can_tranh is not None:
+            out["viec_can_tranh"] = self.viec_can_tranh
         return out
 
     def __getitem__(self, key: str) -> Any:
@@ -483,7 +489,7 @@ class Horoscope:
             ``can_chi_ngay``, ``ngay_hoang_dao``, ``truc_ngay``,
             ``nhi_thap_bat_tu``, ``huong_xuat_hanh``, ``gio_hoang_dao``,
             ``tiet_khi_hien_tai``, ``tiet_khi_tiep_theo``, ``ngu_hanh``,
-            ``ngay_ky``.
+            ``ngay_ky``, ``viec_nen_lam``, ``viec_can_tranh``.
         """
         today = date.today()
         tz = self._birth.timezone if timezone is None else timezone
@@ -511,6 +517,8 @@ class Horoscope:
             danh_gia_viec=raw.get("danh_gia_viec"),
             ngu_hanh=raw.get("ngu_hanh"),
             ngay_ky=raw.get("ngay_ky"),
+            viec_nen_lam=raw.get("viec_nen_lam"),
+            viec_can_tranh=raw.get("viec_can_tranh"),
         )
 
     def render_chart(

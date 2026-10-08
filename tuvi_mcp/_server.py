@@ -12,6 +12,7 @@ from typing import Union
 from mcp.server.fastmcp import FastMCP, Image
 
 from . import _calendar, _chart, _input, _transit
+from ._activity_catalog import ACTIVITY_SLUGS, is_valid_activity
 from ._auspicious import get_auspicious_details as _get_auspicious_details
 from ._input import coerce_timezone
 from ._rendering import generate_laso_image
@@ -237,6 +238,7 @@ def get_auspicious_info(
     is_solar: bool = True,
     timezone: Union[int, str, None] = None,
     menh: str = None,
+    activity: str = None,
 ) -> dict:
     """
     Evaluate Auspicious Days (Ngày Hoàng Đạo / Hắc Đạo), Auspicious Hours (Giờ Hoàng Đạo / Hắc Đạo),
@@ -259,6 +261,8 @@ def get_auspicious_info(
       is anchored at UTC+7 for those J2000-epoch tables — exact tiết-khí timestamps in the
       response may differ slightly for non-7 tz near a tiết-khí boundary.
     - `menh`: Optional ban mệnh letter (`K|M|T|H|O`) for ngũ hành interaction with day nạp âm.
+    - `activity`: Optional activity slug (e.g. `xuat_hanh`, `khai_truong`, `cuoi_hoi`) for
+      `danh_gia_viec`. Omit or `all` for the average across activities.
 
     ### Returns
     A rich Vietnamese JSON structure detailing:
@@ -272,10 +276,21 @@ def get_auspicious_info(
     - `gio_hoang_dao` (12 Giờ Canh Chi, Khung giờ, Sao Hoàng Đạo/Hắc Đạo, Cát/Hung)
     - `ngu_hanh` (can/chi, nạp âm, quan hệ; with menh also quan hệ mệnh)
     - `ngay_ky` (pham_ky, items, viec_ky)
+    - `danh_gia_viec` (cat_percent and verdict for `activity`; activities avoided by the
+      day's Kỵ list, Trực or a Hung 28 Tú are capped below 40)
+    - `viec_nen_lam` (activity slugs recommended for the day)
+    - `viec_can_tranh` (activity slugs to avoid, each with `nguon`: ngay_ky / truc / tu)
     """
     tz, err = _resolve_tz(timezone)
     if err is not None:
         return err
+
+    if not is_valid_activity(activity):
+        return {
+            "error": f"Invalid activity slug: {activity!r}",
+            "error_code": "INVALID_INPUT_PARAMETER",
+            "suggestions": {"activity": sorted(ACTIVITY_SLUGS)},
+        }
 
     now = datetime.now()
     if day is None:
@@ -286,7 +301,13 @@ def get_auspicious_info(
         year = now.year
 
     return _get_auspicious_details(
-        day, month, year, is_solar=is_solar, timezone=tz, menh=menh
+        day,
+        month,
+        year,
+        is_solar=is_solar,
+        timezone=tz,
+        activity=activity,
+        menh=menh,
     )
 
 

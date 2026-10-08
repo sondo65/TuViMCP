@@ -35,6 +35,32 @@ ACTIVITY_SLUGS: frozenset[str] = frozenset(
     }
 )
 
+# Stable display order for per-day activity lists.
+ACTIVITY_ORDER: tuple[str, ...] = (
+    "khai_truong",
+    "mo_hang",
+    "ky_hop_dong",
+    "gap_doi_tac",
+    "hop_quan_trong",
+    "bat_dau_cong_viec",
+    "cau_tai",
+    "thu_no",
+    "vay_tien",
+    "xuat_hanh",
+    "di_xa",
+    "cuoi_hoi",
+    "cau_tu",
+    "nhap_trach",
+    "sua_nha",
+    "dong_tho",
+    "pha_do",
+    "nhap_hoc",
+    "chua_benh",
+    "phau_thuat",
+    "cung_le",
+    "tang_le",
+)
+
 # Vietnamese keywords to match inside truc_ngay.loi_khuyen (lowercase).
 ACTIVITY_KEYWORDS: dict[str, list[str]] = {
     "cau_tai": ["cầu tài", "mở kho"],
@@ -89,6 +115,7 @@ def is_valid_activity(activity: str | None) -> bool:
 __all__ = [
     "ACTIVITY_ALL",
     "ACTIVITY_KEYWORDS",
+    "ACTIVITY_ORDER",
     "ACTIVITY_SLUGS",
     "is_valid_activity",
     "normalize_activity",

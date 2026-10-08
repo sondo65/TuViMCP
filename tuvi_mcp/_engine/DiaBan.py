@@ -3,6 +3,8 @@
 (c) 2026 nmhaaa3218 <manh.ha.3218@gmail.com>
 """
 
+import copy
+
 from .AmDuong import diaChi, dichCung, khoangCachCung, thienCan
 
 
@@ -42,6 +44,9 @@ class cungDiaBan(object):
             return ""
 
     def themSao(self, sao):
+        # Sao instances are module-level singletons shared across charts and threads.
+        sao = copy.copy(sao)
+        sao.saoDacTinh = None
         dacTinhSao(self.cungSo, sao)
         self.cungSao.append(sao.__dict__)
         return self

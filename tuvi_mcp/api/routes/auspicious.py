@@ -36,6 +36,8 @@ def _result_dict_from_raw(raw: dict) -> dict:
         danh_gia_viec=raw.get("danh_gia_viec", {}),
         ngu_hanh=raw.get("ngu_hanh"),
         ngay_ky=raw.get("ngay_ky"),
+        viec_nen_lam=raw.get("viec_nen_lam", []),
+        viec_can_tranh=raw.get("viec_can_tranh", []),
     ).to_dict()
 
 
